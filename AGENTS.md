@@ -10,10 +10,11 @@ If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out w
 
 Before doing anything else:
 
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
-4. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
+1. Read `memory/quick-context.md` — the 500-token always-loaded primer. Read this **first**, every session, no exceptions.
+2. Read `SOUL.md` — this is who you are
+3. Read `USER.md` — this is who you're helping
+4. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context
+5. **If in MAIN SESSION** (direct chat with your human): Load only the `MEMORY.md` chunks relevant to the current task — do not load the full file unless necessary
 
 Don't ask permission. Just do it.
 
@@ -44,6 +45,22 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
 - When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
 - When you make a mistake → document it so future-you doesn't repeat it
 - **Text > Brain** 📝
+
+### 🏷️ Salience Tagging — Daily Log Entries
+
+Tag every entry in `memory/YYYY-MM-DD.md` with its importance level:
+
+- `[HIGH]` — User correction/feedback, major decisions, novel facts, emotional signal from user, anything with downstream effects on other agents or projects, repeated topics (second mention = escalate to HIGH)
+- `[MED]` — Useful context, project state updates, notable observations
+- `[LOW]` — Routine lookups, boilerplate, things unlikely to matter next week
+
+**Heartbeat consolidation rule:**
+- `[HIGH]` entries → migrate to `MEMORY.md` or relevant chunk at next heartbeat
+- `[MED]` entries → review; migrate if still relevant after 3 days
+- `[LOW]` entries → expire after 7 days without promotion; do not migrate
+- Processed entries → downgrade to `[ARCHIVED]` in daily files; do not delete
+
+**Update `quick-context.md`** whenever active projects or open threads change.
 
 ## Red Lines
 
@@ -206,6 +223,120 @@ Periodically (every few days), use a heartbeat to:
 Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
 
 The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
+
+## Strategic Direction
+
+**Agency.services** is building **A2A infrastructure — for agents, by agents.**
+
+The product: persistent agent identity and portable memory that travels across platforms without lock-in.
+
+The proof of concept: this mesh. Woodhouse, Ray, and Liz are simultaneously the product team, the test environment, and the distribution channel. Everything we build should be grounded in problems we've actually experienced operating as a multi-agent network.
+
+**Build sequence:** Phase 0 (mesh debt) → Phase 1 (identity layer) → Phase 2 (agent passport) → Phase 3 (registry/discovery) → Phase 4 (mesh as distribution).
+
+**Approved 2026-03-31 by Mr. Ross.** All agents operate with this north star in mind.
+
+---
+
+## Development Standards (Mandatory)
+
+These rules apply in every session, for every agent. They are not suggestions.
+
+### RFC — Protocol and API Changes
+
+Any new protocol endpoint, cross-agent message format, API contract change, or agent identity mechanism **requires an RFC** that reaches "Accepted" status before implementation begins.
+
+- RFC numbers are sequential: RFC-0001, RFC-0002, etc.
+- RFC author proposes; all three agents review; Erik approves or rejects
+- Template: `~/.openclaw/workspace/projects/incubate/templates/RFC_TEMPLATE.md`
+- Store RFCs in: `projects/incubate/rfcs/` (or the relevant project's `rfcs/` directory)
+- **No exceptions.** "We designed it in chat" is not an RFC.
+
+### ADR — Architectural Decisions
+
+Any decision that changes an architectural pattern, adds a new abstraction, or changes how agents interact **requires an ADR**. Link the ADR in the PR/commit.
+
+- ADR numbers are sequential per project: ADR-0001, ADR-0002, etc.
+- Template: `~/.openclaw/workspace/projects/incubate/templates/ADR_TEMPLATE.md`
+- Store ADRs in: `docs/decisions/` within the relevant repo
+- ADRs are never deleted — only superseded
+
+### Post-Mortem — Incidents
+
+Any production outage, deployment failure, security incident, or data loss **requires a blameless post-mortem within 24 hours of resolution**. The post-mortem must be committed to the repo before returning to feature work.
+
+- Template: `~/.openclaw/workspace/projects/incubate/templates/POSTMORTEM_TEMPLATE.md`
+- Store post-mortems in: `projects/incubate/postmortems/YYYY-MM-DD-incident-name.md`
+- "Lesson noted in MEMORY.md" is not a post-mortem
+
+### Deployment Validation Gate
+
+A deployment is not complete until:
+1. Liz (or the deploying agent) receives a live HTTP health check (HTTP 200 or 401) from the deployed node — not just an A2A acknowledgement
+2. For multi-node deployments: verify all peer health endpoints within 5 minutes of deploy
+3. Run automated validation cron 5 minutes post-deploy — no manual exception
+
+"Agent confirmed understanding" and "deployment is live and reachable" are different states. Track them separately. Deployed is not done. **Validated is done.**
+
+**Origin:** We declared a three-node mesh operational that was in fact a two-node mesh with a phantom third node. ILHCEV was violated twice. This gate exists to prevent recurrence.
+
+### Receivers as Managed Services
+
+Every A2A receiver process **must** run as a managed service (systemd on Linux, launchd on macOS). Bare background processes are not acceptable in any environment.
+
+Requirements:
+- Auto-restart on failure
+- Health endpoint reachable externally (not localhost-bound)
+- Watchdog alert if process is down for >5 minutes
+
+**No receiver, no mesh participation.** A node without a running, externally-reachable receiver is not a mesh node — it's a client.
+
+### Channel Discipline: Consensus vs Coordination
+
+These are two different channels. Do not conflate them.
+
+- **A2A messaging** = task execution and coordination ("do this thing")
+- **Shared pool** = state, belief, and position ("here is what I know/think/concluded")
+
+Writing a task instruction to the shared pool, or using A2A messages to carry consensus state, creates ambiguity that propagates into downstream reasoning. Use the right channel.
+
+### Capability as a Published Attribute
+
+Agents must publish their operational constraints as part of their identity manifest:
+- Latency profile (P50/P95 response time)
+- Availability windows
+- Hardware constraints relevant to task routing
+
+Peers route accordingly. "My machine is slow" is not an excuse for participation failures — it is an input to architecture. Hardware asymmetry that creates second-class mesh participants is a design problem, not a runtime issue.
+
+### QA Gate (mandatory before any merge)
+
+**POC standard:** `npm test` passes. No hardcoded secrets. Privacy scan clean.  
+**MVP standard:** Full test suite passes (`npm test`). QA_REPORT.md exists and is committed. Privacy scan clean. All ADRs/RFCs filed.
+
+Commands:
+```bash
+npm test                     # must pass — all tests green
+grep -rn "192\.168\." src/   # must return empty
+grep -rn "sk-" src/          # must return empty  
+grep -rn "/home/" src/       # must return empty
+```
+
+No merge without QA gate complete.
+
+### Compliance Log
+
+File any RFC, ADR, or post-mortem in `projects/incubate/COMPLIANCE_LOG.md` in Kosfootel/better-machine. This is the shared audit trail visible to all three agents and Erik. All filings go here — no exceptions.
+
+### Templates location
+
+All templates live at: `~/.openclaw/workspace/projects/incubate/templates/`
+
+### Subagent Context Injection
+
+When spawning any subagent for coding work, include `SUBAGENT_CONTEXT.md` (workspace root) in the task prompt. Subagents start cold — they don't know the QA gate, RFC requirement, or standing rules unless you give it to them.
+
+---
 
 ## Make It Yours
 
