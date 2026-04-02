@@ -1,14 +1,14 @@
 {
   "woodhouse": {
-    "url": "http://192.168.50.24:18800/a2a/jsonrpc",
+    "url": "http://192.168.50.24:18800",
     "token": "f5b4393c86c53b94006f67d169d4fe25301094476c1f1a36"
   },
   "ray": {
-    "url": "http://192.168.50.22:18800/a2a/jsonrpc",
+    "url": "http://192.168.50.22:18800",
     "token": "77e77ac2507d36d66ca6532ceb08877f2bfb0d6c8b7458ce"
   },
   "liz": {
-    "url": "http://192.168.50.23:18800/a2a/jsonrpc",
+    "url": "http://192.168.50.23:18800",
     "token": "85775f51f45ea6d80c87232b246818324c7b78eb31dddcf2"
   }
 }

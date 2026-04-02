@@ -25,7 +25,7 @@ MAX_ATTEMPTS=5
 BACKOFF=5  # seconds between first retry
 
 # Strip /a2a/jsonrpc suffix for agent-card check
-BASE_URL="${PEER_URL%/a2a/jsonrpc}"
+BASE_URL="$PEER_URL"
 
 attempt=1
 while [ $attempt -le $MAX_ATTEMPTS ]; do
