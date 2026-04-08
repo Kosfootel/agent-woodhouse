@@ -122,7 +122,12 @@ This enforces the standing policy: *shared facts safe, shared interpretations da
 ## Status
 
 - Vision: **approved by Mr. Ross 2026-04-08**
-- RFC: **pending** (tunnel protocol requires RFC before implementation)
+- **ON HOLD — 2026-04-08** — parked until Better Machine Lab reaches beta state
+  - GX-10 must be installed and operational
+  - Mac Studio delivery expected ~September 2026
+  - Role assignments to be revisited at that point
+  - Reason: token cost of implementation not justified before infrastructure is in place
+- RFC: **pending** (tunnel protocol requires RFC before implementation — do not begin until hold is lifted)
 - Assigned: Liz (mesh-memory build), Woodhouse (coordination + passport spec), Ray (Agency.services integration angle)
 
 ---
