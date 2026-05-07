@@ -1,0 +1,31 @@
+services:
+  vigil-api:
+    build: .
+    container_name: vigil-home-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - vigil-data:/data
+      - vigil-logs:/var/log/suricata
+    environment:
+      - VIGIL_DB_PATH=/data/vigil.db
+      - VIGIL_EVE_JSON=/var/log/suricata/eve.json
+      - VIGIL_POLL_INTERVAL=2.0
+    restart: unless-stopped
+
+  # Optional: generate synthetic eve.json data for testing
+  vigil-simulator:
+    build: .
+    container_name: vigil-home-simulator
+    entrypoint: ["python", "-c", "exec(open('/app/simulate.py').read())"]
+    volumes:
+      - vigil-logs:/var/log/suricata
+    depends_on:
+      - vigil-api
+    restart: "no"
+    profiles:
+      - dev
+
+volumes:
+  vigil-data:
+  vigil-logs:
