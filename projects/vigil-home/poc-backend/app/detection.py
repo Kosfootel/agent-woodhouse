@@ -1,4 +1,8 @@
-"""Vigil Home - Suricata eve.json consumer & detection logic"""
+"""Vigil Home - Suricata eve.json consumer & detection logic
+
+Now integrates AI modules for anomaly detection, trust scoring,
+and narrative generation on ingested events.
+"""
 
 import json
 import os
@@ -9,10 +13,56 @@ from pathlib import Path
 
 from app.database import SessionLocal
 from app.models import Device, Event, Alert
+from app.ai import TrustModel, AnomalyDetector, NarrativeGenerator, Severity, DeviceClassifier
 
 EVE_JSON_PATH = os.environ.get("VIGIL_EVE_JSON", "/var/log/suricata/eve.json")
 POLL_INTERVAL = float(os.environ.get("VIGIL_POLL_INTERVAL", "2.0"))
 
+# ── AI runtime instances ───────────────────────────────────────────
+
+narrator = NarrativeGenerator()
+classifier = DeviceClassifier()
+
+# Per-device in-memory state
+_anomaly_detectors: dict[int, AnomalyDetector] = {}
+_trust_models: dict[int, TrustModel] = {}
+
+
+def _get_anomaly_detector(device_id: int) -> AnomalyDetector:
+    if device_id not in _anomaly_detectors:
+        _anomaly_detectors[device_id] = AnomalyDetector(window_size=100, z_threshold=3.0)
+    return _anomaly_detectors[device_id]
+
+
+def _get_trust_model(device_id: int) -> TrustModel:
+    if device_id not in _trust_models:
+        _trust_models[device_id] = TrustModel(half_life=86400)
+    return _trust_models[device_id]
+
+
+def _severity_to_severity_enum(sev_str: str) -> Severity:
+    mapping = {
+        "critical": Severity.CRITICAL,
+        "high": Severity.HIGH,
+        "medium": Severity.MEDIUM,
+        "low": Severity.LOW,
+        "info": Severity.INFO,
+    }
+    return mapping.get(sev_str, Severity.INFO)
+
+
+def _extract_anomaly_value(record: dict) -> float | None:
+    """Extract a numeric value from a Suricata record for anomaly detection."""
+    flow = record.get("flow", {})
+    if flow:
+        # Use total bytes as a proxy metric
+        toserver = flow.get("bytes_toserver", 0) or 0
+        toclient = flow.get("bytes_toclient", 0) or 0
+        return float(toserver + toclient)
+    netflow = record.get("netflow", {})
+    if netflow:
+        return float(netflow.get("bytes", 0) or 0)
+    return None
 
 def _map_suricata_severity(suricata_prio: int) -> str:
     """Map Suricata priority 1-4 to our severity labels."""
@@ -34,17 +84,53 @@ def _get_or_create_device(db, src_ip: str, src_mac: str | None, hostname: str | 
         return device
 
     mac = src_mac or f"00:00:00:{src_ip.replace('.', ':')}"
+
+    # Auto-classify the device
+    features = _build_classification_features(hostname)
+    classifications = classifier.classify(mac, features if features else None, top_n=1)
+    classified_type = classifications[0].device_type if classifications else None
+    classified_confidence = round(classifications[0].confidence, 4) if classifications else None
+
     device = Device(
         mac=mac,
         ip=src_ip,
         hostname=hostname,
         device_type=_guess_device_type(hostname),
         trust_score=0.5,
+        classified_type=classified_type,
+        classified_confidence=classified_confidence,
     )
     db.add(device)
     db.commit()
     db.refresh(device)
+
+    # Initialize trust model
+    _trust_models[device.id] = TrustModel(half_life=86400)
+
     return device
+
+
+def _build_classification_features(hostname: str | None) -> dict | None:
+    """Build behavioural feature hints from hostname for classification."""
+    if not hostname:
+        return None
+    hl = hostname.lower()
+    features: dict = {}
+    if any(kw in hl for kw in ("cam", "nest", "ring")):
+        features = {"protocols": ["RTSP", "HTTPS", "MQTT"], "ports": [554, 443], "traffic_kbps": 1200.0, "connections_hour": 120}
+    elif any(kw in hl for kw in ("plug", "light", "bulb", "hue")):
+        features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.5, "connections_hour": 5}
+    elif any(kw in hl for kw in ("tv", "roku", "chromecast")):
+        features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSDP"], "ports": [443, 80, 1900], "traffic_kbps": 2000.0, "connections_hour": 80}
+    elif any(kw in hl for kw in ("thermo", "sensor")):
+        features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.2, "connections_hour": 10}
+    elif any(kw in hl for kw in ("phone", "iphone", "android")):
+        features = {"protocols": ["HTTPS", "HTTP", "DNS"], "ports": [443, 80, 53], "traffic_kbps": 500.0, "connections_hour": 100}
+    elif any(kw in hl for kw in ("laptop", "macbook", "thinkpad", "pc-", "desktop")):
+        features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSH"], "ports": [443, 80, 53, 22], "traffic_kbps": 1000.0, "connections_hour": 200}
+    if features:
+        features["active_hour"] = datetime.now(timezone.utc).hour
+    return features if features else None
 
 
 def _guess_device_type(hostname: str | None) -> str | None:
@@ -67,34 +153,26 @@ def _guess_device_type(hostname: str | None) -> str | None:
     return "unknown"
 
 
-def _compute_trust_score(device_id: int, db) -> float:
-    """Recalculate trust score based on recent events."""
-    recent_events = (
-        db.query(Event)
-        .filter(Event.device_id == device_id)
-        .order_by(Event.timestamp.desc())
-        .limit(50)
-        .all()
-    )
-    if not recent_events:
-        return 0.5
+def _update_trust_score(device_id: int, severity_str: str, db) -> float:
+    """Update a device's trust score using the Bayesian TrustModel.
 
-    score = 0.5
-    for ev in recent_events:
-        if ev.severity == "critical":
-            score -= 0.2
-        elif ev.severity == "high":
-            score -= 0.1
-        elif ev.severity == "low":
-            score += 0.02
-        else:
-            score += 0.01
+    Positive events (info/low) increase trust; negative events (high/critical)
+    decrease it.
+    """
+    model = _get_trust_model(device_id)
+    model.decay(time.time())
 
-    return max(0.0, min(1.0, score))
+    if severity_str in ("critical", "high"):
+        model.update(positive=False)
+    elif severity_str in ("info", "low"):
+        model.update(positive=True)
+    # medium: neutral — no update
+
+    return round(model.score, 4)
 
 
 def process_eve_line(line: str, db):
-    """Parse a single Suricata eve.json line and create events/alerts."""
+    """Parse a single Suricata eve.json line and create events/alerts with AI."""
     try:
         record = json.loads(line)
     except json.JSONDecodeError:
@@ -120,6 +198,17 @@ def process_eve_line(line: str, db):
 
     severity = "info"
     details = {}
+    is_anomalous = False
+    z_score = None
+
+    # ── Anomaly detection on numeric metrics ──
+    anomaly_value = _extract_anomaly_value(record)
+    if anomaly_value is not None:
+        detector = _get_anomaly_detector(device.id)
+        result = detector.record(anomaly_value)
+        if result and result.is_anomaly:
+            is_anomalous = True
+            z_score = round(result.z_score, 4)
 
     if event_type == "alert":
         alert_data = record.get("alert", {})
@@ -138,14 +227,34 @@ def process_eve_line(line: str, db):
             "dest_port": record.get("dest_port"),
             "src_port": record.get("src_port"),
         }
+        if is_anomalous:
+            details["z_score"] = z_score
+            details["is_anomalous"] = True
 
-        # Also create an alert record
+        # Generate narrative for this alert using the AI module
+        dev_name = device.hostname or device.mac
+        dev_type = device.device_type or "unknown"
+        severity_enum = _severity_to_severity_enum(severity)
+
+        alert_obj = narrator.alert(
+            device_name=dev_name,
+            device_type=dev_type,
+            severity=severity_enum,
+            anomaly_detail=f"{signature} — {alert_type}",
+            trust_score=device.trust_score,
+            extra={
+                "z_score": z_score,
+                "category": alert_type,
+                "signature": signature,
+            },
+        )
+
         alert = Alert(
             device_id=device.id,
             timestamp=ts,
             alert_type=alert_type,
             severity=severity,
-            narrative=signature,
+            narrative=alert_obj.description,
             status="open",
         )
         db.add(alert)
@@ -221,6 +330,10 @@ def process_eve_line(line: str, db):
         # Generic catch-all for uncategorised event types (stats, anomaly, flow, etc.)
         details = {k: record[k] for k in record if k not in ("event_type", "timestamp", "src_ip", "dest_ip", "src_mac", "dest_mac", "eth")}
 
+    if is_anomalous:
+        details["z_score"] = z_score
+        details["is_anomalous"] = True
+
     event = Event(
         device_id=device.id,
         timestamp=ts,
@@ -230,8 +343,8 @@ def process_eve_line(line: str, db):
     )
     db.add(event)
 
-    # Update trust score
-    device.trust_score = _compute_trust_score(device.id, db)
+    # Update trust score using Bayesian model
+    device.trust_score = _update_trust_score(device.id, severity, db)
     device.last_seen = datetime.now(timezone.utc)
 
     db.commit()

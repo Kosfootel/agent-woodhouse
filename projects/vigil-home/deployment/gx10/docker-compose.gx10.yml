@@ -1,0 +1,112 @@
+services:
+  # Vigil API + AI Backend
+  vigil-api:
+    build:
+      context: ../../poc-backend
+      dockerfile: Dockerfile
+    container_name: vigil-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://vigil:${POSTGRES_PASSWORD}@vigil-db:5432/vigil
+      - SURICATA_EVE_PATH=/var/log/suricata/eve.json
+      - PYTHONPATH=/app
+      - LOG_LEVEL=info
+    volumes:
+      - vigil-logs:/var/log/suricata:ro
+      - ../../poc-backend/app:/app:ro
+    depends_on:
+      vigil-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Postgres Database (if headroom allows, else use SQLite)
+  vigil-db:
+    image: postgres:15-alpine
+    container_name: vigil-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=vigil
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vigil_secure_2024}
+      - POSTGRES_DB=vigil
+    volumes:
+      - vigil-postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Suricata IDS
+  vigil-suricata:
+    image: jasonish/suricata:6.0
+    container_name: vigil-suricata
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    environment:
+      - SURICATA_OPTIONS=-i eth0 --set outputs.1.eve-log.enabled=yes
+    volumes:
+      - vigil-logs:/var/log/suricata
+      - ./suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - /etc/localtime:/etc/localtime:ro
+    command: suricata -i eth0 -c /etc/suricata/suricata.yaml --set outputs.1.eve-log.enabled=yes
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Optional: React Dashboard (can disable if headroom tight)
+  vigil-dashboard:
+    build:
+      context: ../../poc-dashboard  # To be created
+      dockerfile: Dockerfile
+    container_name: vigil-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VIGIL_API_URL=http://192.168.50.30:8000
+    depends_on:
+      - vigil-api
+    profiles:
+      - dashboard  # Only start with --profile dashboard
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  vigil-postgres-data:
+    driver: local
+  vigil-logs:
+    driver: local
+
+networks:
+  default:
+    name: vigil-network
+    driver: bridge

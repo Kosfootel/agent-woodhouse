@@ -16,6 +16,8 @@ class Device(Base):
     hostname = Column(String(255), nullable=True)
     device_type = Column(String(64), nullable=True)
     trust_score = Column(Float, default=0.5)
+    classified_type = Column(String(64), nullable=True)
+    classified_confidence = Column(Float, nullable=True)
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -27,6 +29,8 @@ class Device(Base):
             "hostname": self.hostname,
             "device_type": self.device_type,
             "trust_score": self.trust_score,
+            "classified_type": self.classified_type,
+            "classified_confidence": self.classified_confidence,
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
         }

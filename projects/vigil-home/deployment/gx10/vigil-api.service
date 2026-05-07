@@ -1,0 +1,25 @@
+# Vigil API systemd service for GX-10
+# Place in: /etc/systemd/system/vigil-api.service
+
+[Unit]
+Description=Vigil Home Security API
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/vigil
+
+# Pull and start
+ExecStartPre=/bin/sh -c 'cd /opt/vigil && docker-compose -f docker-compose.gx10.yml pull'
+ExecStart=/bin/sh -c 'cd /opt/vigil && docker-compose -f docker-compose.gx10.yml up -d'
+
+# Stop
+ExecStop=/bin/sh -c 'cd /opt/vigil && docker-compose -f docker-compose.gx10.yml down'
+
+# Restart
+ExecReload=/bin/sh -c 'cd /opt/vigil && docker-compose -f docker-compose.gx10.yml restart'
+
+[Install]
+WantedBy=multi-user.target
