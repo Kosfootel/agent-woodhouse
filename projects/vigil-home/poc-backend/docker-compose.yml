@@ -11,6 +11,35 @@ services:
       - VIGIL_DB_PATH=/data/vigil.db
       - VIGIL_EVE_JSON=/var/log/suricata/eve.json
       - VIGIL_POLL_INTERVAL=2.0
+      # Email configuration (use Gmail as default SMTP)
+      - VIGIL_SMTP_PROVIDER=gmail
+      - GMAIL_USER=kosfootel@gmail.com
+      - GMAIL_APP_PASSWORD=odsq hraj soqe hyzm
+      - VIGIL_ALERT_FROM=vigil@hockeyops.ai
+      - VIGIL_ALERT_TO=erik_ross@hockeyops.ai
+      - VIGIL_HOSTNAME=gx-10.local
+    restart: unless-stopped
+
+  # Standalone email poller (monitors Vigil API for new alerts)
+  vigil-email-poller:
+    build: .
+    container_name: vigil-home-email
+    entrypoint: ["python", "-m", "app.email_poller"]
+    volumes:
+      - vigil-data:/data
+    depends_on:
+      - vigil-api
+    environment:
+      - VIGIL_API_URL=http://vigil-api:8000
+      - VIGIL_POLL_SECONDS=30
+      - LAST_ALERT_ID_PATH=/data/last_alert_id.txt
+      # Email configuration (must match vigil-api)
+      - VIGIL_SMTP_PROVIDER=gmail
+      - GMAIL_USER=kosfootel@gmail.com
+      - GMAIL_APP_PASSWORD=odsq hraj soqe hyzm
+      - VIGIL_ALERT_FROM=vigil@hockeyops.ai
+      - VIGIL_ALERT_TO=erik_ross@hockeyops.ai
+      - VIGIL_HOSTNAME=gx-10.local
     restart: unless-stopped
 
   # Optional: generate synthetic eve.json data for testing

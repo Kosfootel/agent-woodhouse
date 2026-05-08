@@ -261,6 +261,30 @@ def ingest_event(req: EventIngest, db: Session = Depends(get_db)):
         db.refresh(alert)
         alert_data = alert.to_dict()
 
+        # Send email for critical/high alerts from manual ingestion
+        if req.severity in ("critical", "high"):
+            try:
+                dev_name = device.hostname or device.mac
+                dev_type = device.device_type or "unknown"
+                email_ctx = AlertEmailContext(
+                    severity=req.severity,
+                    title=f"Anomaly: {req.event_type}",
+                    description=alert_narrative.description,
+                    timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    device_name=dev_name,
+                    mac_address=device.mac,
+                    trust_score=device.trust_score,
+                    device_type=dev_type,
+                    device_id=device.id,
+                    alert_id=alert.id,
+                    alert_type="anomaly",
+                )
+                send_alert_email(email_ctx)
+            except Exception as e:
+                # Don't fail the request if email fails
+                import logging
+                logging.getLogger("vigil.email").error(f"Failed to send alert email: {e}")
+
     # Create event record
     details = req.details or {}
     if z_score is not None:
@@ -408,6 +432,55 @@ def get_alert_narrative(alert_id: int, db: Session = Depends(get_db)):
         "alert_id": alert.id,
         "narrative": alert_obj.description,
         "regenerated": True,
+    }
+
+
+# ── Email notification endpoints ─────────────────────────────────────
+
+
+@app.get("/email/status")
+def email_status():
+    """Get email notification system status."""
+    return get_email_status()
+
+
+@app.get("/email/test")
+def email_test():
+    """Send a test email to verify SMTP configuration."""
+    return send_test_email()
+
+
+@app.post("/email/send-alert")
+def email_send_alert(alert_id: int, db: Session = Depends(get_db)):
+    """Manually send an email for an existing alert."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    device = db.query(Device).filter(Device.id == alert.device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Associated device not found")
+
+    ctx = AlertEmailContext(
+        severity=alert.severity,
+        title=alert.alert_type,
+        description=alert.narrative or f"Alert: {alert.alert_type}",
+        timestamp=alert.timestamp.strftime("%Y-%m-%d %H:%M:%S UTC"),
+        device_name=device.hostname or device.mac,
+        mac_address=device.mac,
+        trust_score=device.trust_score,
+        device_type=device.device_type or "unknown",
+        device_id=device.id,
+        alert_id=alert.id,
+        alert_type=alert.alert_type,
+    )
+
+    sent = send_alert_email(ctx)
+    return {
+        "alert_id": alert.id,
+        "severity": alert.severity,
+        "email_sent": sent,
+        "status": get_email_status(),
     }
 
 

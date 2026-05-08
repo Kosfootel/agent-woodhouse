@@ -14,6 +14,7 @@ from pathlib import Path
 from app.database import SessionLocal
 from app.models import Device, Event, Alert
 from app.ai import TrustModel, AnomalyDetector, NarrativeGenerator, Severity, DeviceClassifier
+from app.email_notifier import AlertEmailContext, send_alert_email
 
 EVE_JSON_PATH = os.environ.get("VIGIL_EVE_JSON", "/var/log/suricata/eve.json")
 POLL_INTERVAL = float(os.environ.get("VIGIL_POLL_INTERVAL", "2.0"))
@@ -258,6 +259,27 @@ def process_eve_line(line: str, db):
             status="open",
         )
         db.add(alert)
+        db.flush()
+
+        # Send email for critical/high alerts
+        if severity in ("critical", "high"):
+            try:
+                email_ctx = AlertEmailContext(
+                    severity=severity,
+                    title=alert_type,
+                    description=alert_obj.description,
+                    timestamp=ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    device_name=dev_name,
+                    mac_address=device.mac,
+                    trust_score=device.trust_score,
+                    device_type=dev_type,
+                    device_id=device.id,
+                    alert_id=alert.id,
+                    alert_type=alert_type,
+                )
+                send_alert_email(email_ctx)
+            except Exception as e:
+                logger.error(f"Failed to send alert email: {e}")
 
     elif event_type == "dns":
         dns_data = record.get("dns", {})
