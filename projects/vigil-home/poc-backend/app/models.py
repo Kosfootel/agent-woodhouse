@@ -57,6 +57,50 @@ class Event(Base):
         }
 
 
+class TrustScore(Base):
+    """Persistent state for a device's Bayesian trust model."""
+    __tablename__ = "trust_scores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, unique=True, nullable=False, index=True)
+    alpha = Column(Float, default=1.0)
+    omega = Column(Float, default=1.0)
+    half_life = Column(Float, default=86400.0)
+    last_update = Column(Float, default=lambda: datetime.now(timezone.utc).timestamp())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "alpha": self.alpha,
+            "omega": self.omega,
+            "half_life": self.half_life,
+            "last_update": self.last_update,
+        }
+
+
+class AnomalyBaseline(Base):
+    """Persistent state for a device's anomaly detector baseline."""
+    __tablename__ = "anomaly_baselines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(Integer, unique=True, nullable=False, index=True)
+    window = Column(JSON, default=list)
+    window_size = Column(Integer, default=100)
+    z_threshold = Column(Float, default=3.0)
+    min_samples = Column(Integer, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "device_id": self.device_id,
+            "window_size": self.window_size,
+            "z_threshold": self.z_threshold,
+            "min_samples": self.min_samples,
+            "window_len": len(self.window) if isinstance(self.window, list) else 0,
+        }
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
@@ -77,4 +121,44 @@ class Alert(Base):
             "severity": self.severity,
             "narrative": self.narrative,
             "status": self.status,
+            "acknowledged": self.status in ("acknowledged", "resolved"),
         }
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password_hash = Column(String(256), nullable=False)
+    role = Column(String(32), default="admin")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "role": self.role,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    token_hash = Column(String(128), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    revoked = Column(Integer, default=0)  # 0 = active, 1 = revoked
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def is_expired(self) -> bool:
+        now = datetime.now(timezone.utc)
+        expires = self.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return now > expires
+
+    def is_active(self) -> bool:
+        return not self.revoked and not self.is_expired()

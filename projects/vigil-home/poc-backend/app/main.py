@@ -1,22 +1,50 @@
-"""Vigil Home - FastAPI Application with AI integration."""
+"""Vigil Home - FastAPI Application with AI integration and authentication."""
 
-import random
-from datetime import datetime, timezone
+import hashlib
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
-from app.models import Device, Event, Alert
+from app.models import Device, Event, Alert, User, RefreshToken
 from app.detection import start_eve_consumer
 from app.ai import TrustModel, AnomalyDetector, NarrativeGenerator, Severity, DeviceClassifier
+from app.email_notifier import AlertEmailContext, send_alert_email, send_test_email, get_email_status
+from app.ai_persistence import load_trust_model, load_anomaly_detector, store_trust_state, store_anomaly_state
+from app.auth import (
+    require_auth,
+    optional_auth,
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    create_refresh_token_expiry,
+    bootstrap_admin,
+    AUTH_DISABLED,
+)
 
 app = FastAPI(
     title="Vigil Home API",
     description="IoT threat detection backend with AI scoring",
-    version="0.2.0",
+    version="0.3.0",
+)
+
+# ── CORS ────────────────────────────────────────────────────────────
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── AI runtime instances ───────────────────────────────────────────
@@ -29,17 +57,23 @@ _anomaly_detectors: dict[int, AnomalyDetector] = {}
 _trust_models: dict[int, TrustModel] = {}
 
 
-def _get_anomaly_detector(device_id: int) -> AnomalyDetector:
-    """Get or create an AnomalyDetector for a device."""
+def _get_anomaly_detector(device_id: int, db: Session) -> AnomalyDetector:
+    """Get the AnomalyDetector for a device, loading from DB if not cached."""
     if device_id not in _anomaly_detectors:
-        _anomaly_detectors[device_id] = AnomalyDetector(window_size=100, z_threshold=3.0)
+        detector = load_anomaly_detector(db, device_id)
+        if detector is None:
+            detector = AnomalyDetector(window_size=100, z_threshold=3.0)
+        _anomaly_detectors[device_id] = detector
     return _anomaly_detectors[device_id]
 
 
-def _get_trust_model(device_id: int) -> TrustModel:
-    """Get or create a TrustModel for a device."""
+def _get_trust_model(device_id: int, db: Session) -> TrustModel:
+    """Get the TrustModel for a device, loading from DB if not cached."""
     if device_id not in _trust_models:
-        _trust_models[device_id] = TrustModel(half_life=86400)
+        model = load_trust_model(db, device_id)
+        if model is None:
+            model = TrustModel(half_life=86400)
+        _trust_models[device_id] = model
     return _trust_models[device_id]
 
 
@@ -75,13 +109,158 @@ class EventIngest(BaseModel):
     details: Optional[dict] = None
 
 
+class LoginRequest(BaseModel):
+    """Request body for admin login."""
+    username: str
+    password: str
+
+
+class RefreshRequest(BaseModel):
+    """Request body for token refresh."""
+    refresh_token: str
+
+
 # ── Startup ─────────────────────────────────────────────────────────
 
 
 @app.on_event("startup")
 async def startup():
-    init_db()
+    from app.database import init_db as _init_db
+    _init_db()
+
+    # Bootstrap admin user
+    db = next(get_db())
+    try:
+        bootstrap_admin(db)
+    finally:
+        db.close()
+
     start_eve_consumer()
+
+
+# ── Auth endpoints ─────────────────────────────────────────────────
+
+
+@app.post("/auth/login")
+def auth_login(req: LoginRequest, db: Session = Depends(get_db)):
+    """Authenticate with username and password.
+
+    Returns JWT access token + opaque refresh token.
+    """
+    user = db.query(User).filter(User.username == req.username).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username or password",
+        )
+
+    access_token = create_access_token(user.id, user.role)
+    refresh_token_str = create_refresh_token()
+    token_hash = hashlib.sha256(refresh_token_str.encode()).hexdigest()
+
+    refresh_token = RefreshToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=create_refresh_token_expiry(),
+    )
+    db.add(refresh_token)
+    db.commit()
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token_str,
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": user.to_dict(),
+    }
+
+
+@app.post("/auth/refresh")
+def auth_refresh(req: RefreshRequest, db: Session = Depends(get_db)):
+    """Exchange a refresh token for a new access + refresh token pair.
+
+    Implements refresh token rotation: the old token is revoked and a
+    new one is issued. If the token is already revoked (possible theft),
+    all tokens for the user are revoked.
+    """
+    token_hash = hashlib.sha256(req.refresh_token.encode()).hexdigest()
+    stored = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+
+    if not stored:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    if stored.revoked:
+        # Token reuse detected — revoke all tokens for this user
+        db.query(RefreshToken).filter(
+            RefreshToken.user_id == stored.user_id,
+            RefreshToken.revoked == 0,
+        ).update({"revoked": 1})
+        db.commit()
+        raise HTTPException(
+            status_code=401,
+            detail="Refresh token revoked — all sessions invalidated",
+        )
+
+    if stored.is_expired():
+        raise HTTPException(status_code=401, detail="Refresh token expired")
+
+    # Revoke the old token
+    stored.revoked = 1
+    db.commit()
+
+    # Issue new tokens
+    user = db.query(User).filter(User.id == stored.user_id).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    access_token = create_access_token(user.id, user.role)
+    new_refresh_token_str = create_refresh_token()
+    new_token_hash = hashlib.sha256(new_refresh_token_str.encode()).hexdigest()
+
+    new_refresh = RefreshToken(
+        user_id=user.id,
+        token_hash=new_token_hash,
+        expires_at=create_refresh_token_expiry(),
+    )
+    db.add(new_refresh)
+    db.commit()
+
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token_str,
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": user.to_dict(),
+    }
+
+
+@app.post("/auth/logout")
+def auth_logout(
+    req: RefreshRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Revoke the provided refresh token (logout)."""
+    token_hash = hashlib.sha256(req.refresh_token.encode()).hexdigest()
+    stored = db.query(RefreshToken).filter(
+        RefreshToken.token_hash == token_hash,
+        RefreshToken.user_id == int(auth.get("sub", 0)),
+    ).first()
+
+    if stored:
+        stored.revoked = 1
+        db.commit()
+
+    return {"message": "Logged out"}
+
+
+# ── Health endpoint (unauthenticated, no sensitive data) ────────────
+
+
+@app.get("/health")
+def health_check():
+    """Simple health check — no auth required, no sensitive data."""
+    return {"status": "ok", "version": "0.3.0"}
 
 
 # ── Device endpoints ────────────────────────────────────────────────
@@ -92,6 +271,7 @@ def list_devices(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
 ):
     """List all known devices with trust scores and classifications."""
     devices = db.query(Device).offset(skip).limit(limit).all()
@@ -102,7 +282,11 @@ def list_devices(
 
 
 @app.get("/devices/{device_id}")
-def get_device(device_id: int, db: Session = Depends(get_db)):
+def get_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Get detailed information about a specific device."""
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
@@ -131,7 +315,11 @@ def get_device(device_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/devices")
-def create_device(req: BaselineRequest, db: Session = Depends(get_db)):
+def create_device(
+    req: BaselineRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Register a new device with trust scoring and auto-classification."""
     existing = db.query(Device).filter(Device.mac == req.mac).first()
     if existing:
@@ -196,8 +384,9 @@ def create_device(req: BaselineRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(device)
 
-    # Store trust model in memory
+    # Store trust model in memory and persist
     _trust_models[device.id] = trust_model
+    store_trust_state(db, device.id, trust_model)
 
     return {"message": "Device created", "device": device.to_dict()}
 
@@ -206,7 +395,11 @@ def create_device(req: BaselineRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/events")
-def ingest_event(req: EventIngest, db: Session = Depends(get_db)):
+def ingest_event(
+    req: EventIngest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Manually ingest an event, triggering anomaly detection and trust update."""
     device = db.query(Device).filter(Device.id == req.device_id).first()
     if not device:
@@ -216,20 +409,22 @@ def ingest_event(req: EventIngest, db: Session = Depends(get_db)):
     is_anomalous = False
     z_score = None
     if req.value is not None:
-        detector = _get_anomaly_detector(device.id)
+        detector = _get_anomaly_detector(device.id, db)
         result = detector.record(req.value)
         if result and result.is_anomaly:
             is_anomalous = True
             z_score = round(result.z_score, 4)
+        store_anomaly_state(db, device.id, detector)
 
     # Trust update
-    trust_model = _get_trust_model(device.id)
+    trust_model = _get_trust_model(device.id, db)
     if is_anomalous:
         trust_model.update(positive=False)
     else:
         trust_model.update(positive=True)
     trust_model.decay()
     device.trust_score = round(trust_model.score, 4)
+    store_trust_state(db, device.id, trust_model)
 
     # Create alert if anomalous
     alert_data = None
@@ -321,6 +516,7 @@ def list_events(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
 ):
     """List security events with optional filtering."""
     query = db.query(Event)
@@ -347,6 +543,7 @@ def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
 ):
     """List security alerts with optional filtering."""
     query = db.query(Alert)
@@ -362,7 +559,11 @@ def list_alerts(
 
 
 @app.get("/alerts/{alert_id}")
-def get_alert(alert_id: int, db: Session = Depends(get_db)):
+def get_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Get a specific alert with full narrative text."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
@@ -379,7 +580,11 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/alerts/{alert_id}/narrative")
-def get_alert_narrative(alert_id: int, db: Session = Depends(get_db)):
+def get_alert_narrative(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Get the generated narrative for an alert, regenerating if missing."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
@@ -435,23 +640,47 @@ def get_alert_narrative(alert_id: int, db: Session = Depends(get_db)):
     }
 
 
+@app.patch("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Acknowledge an alert (status -> 'acknowledged')."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.status = "acknowledged"
+    db.commit()
+
+    return {
+        "message": "Alert acknowledged",
+        "alert": alert.to_dict(),
+    }
+
+
 # ── Email notification endpoints ─────────────────────────────────────
 
 
 @app.get("/email/status")
-def email_status():
+def email_status(auth: dict = Depends(require_auth)):
     """Get email notification system status."""
     return get_email_status()
 
 
 @app.get("/email/test")
-def email_test():
+def email_test(auth: dict = Depends(require_auth)):
     """Send a test email to verify SMTP configuration."""
     return send_test_email()
 
 
 @app.post("/email/send-alert")
-def email_send_alert(alert_id: int, db: Session = Depends(get_db)):
+def email_send_alert(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Manually send an email for an existing alert."""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
@@ -488,13 +717,53 @@ def email_send_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/baseline")
-def create_baseline(req: BaselineRequest, db: Session = Depends(get_db)):
+def create_baseline(
+    req: BaselineRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Register or update a device behaviour baseline (legacy, delegates to POST /devices)."""
     # Check if device exists
     device = db.query(Device).filter(Device.mac == req.mac).first()
     if not device:
-        # Delegate to the new create_device logic
-        return create_device(req, db)
+        # Create new device (inlined to avoid FastAPI dependency passing issues)
+        features_hl = req.hostname.lower() if req.hostname else ""
+        features: dict = {}
+        if req.hostname:
+            if any(kw in features_hl for kw in ("cam", "nest", "ring")):
+                features = {"protocols": ["RTSP", "HTTPS", "MQTT"], "ports": [554, 443], "traffic_kbps": 1200.0, "connections_hour": 120}
+            elif any(kw in features_hl for kw in ("plug", "light", "bulb", "hue")):
+                features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.5, "connections_hour": 5}
+            elif any(kw in features_hl for kw in ("tv", "roku", "chromecast")):
+                features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSDP"], "ports": [443, 80, 1900], "traffic_kbps": 2000.0, "connections_hour": 80}
+            elif any(kw in features_hl for kw in ("thermo", "sensor")):
+                features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.2, "connections_hour": 10}
+            elif any(kw in features_hl for kw in ("phone", "iphone", "android")):
+                features = {"protocols": ["HTTPS", "HTTP", "DNS"], "ports": [443, 80, 53], "traffic_kbps": 500.0, "connections_hour": 100}
+            elif any(kw in features_hl for kw in ("laptop", "macbook", "thinkpad", "pc-", "desktop")):
+                features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSH"], "ports": [443, 80, 53, 22], "traffic_kbps": 1000.0, "connections_hour": 200}
+            features["active_hour"] = datetime.now(timezone.utc).hour
+
+        classifications = classifier.classify(req.mac, features if features else None, top_n=1)
+        classified_type = classifications[0].device_type if classifications else None
+        classified_confidence = round(classifications[0].confidence, 4) if classifications else None
+        trust_model = TrustModel(half_life=86400)
+        trust_score = round(trust_model.score, 4)
+
+        device = Device(
+            mac=req.mac,
+            ip=req.ip,
+            hostname=req.hostname,
+            device_type=req.device_type or classified_type,
+            trust_score=trust_score,
+            classified_type=classified_type,
+            classified_confidence=classified_confidence,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+        _trust_models[device.id] = trust_model
+        return {"message": "Device created", "device": device.to_dict()}
 
     # Update existing device
     device.ip = req.ip
@@ -513,7 +782,10 @@ def create_baseline(req: BaselineRequest, db: Session = Depends(get_db)):
 
 
 @app.get("/classify/{mac}")
-def classify_device(mac: str):
+def classify_device(
+    mac: str,
+    auth: dict = Depends(require_auth),
+):
     """Classify a device by MAC address (standalone, no DB needed)."""
     classifications = classifier.classify(mac, top_n=3)
     vendor = classifier.oui_vendor(mac)
@@ -534,6 +806,93 @@ def classify_device(mac: str):
 
 
 @app.get("/known-device-types")
-def known_device_types():
+def known_device_types(auth: dict = Depends(require_auth)):
     """List all known device types with their behavioural signatures."""
     return classifier.known_devices()
+
+
+# ── Trust trend endpoint ────────────────────────────────────────────
+
+
+@app.get("/trust-trend")
+def trust_trend(
+    days: int = Query(7, ge=1, le=90),
+    device_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Get historical trust score data for the trust trend chart.
+
+    Replaces the previous Math.random() simulation with real data
+    aggregated from events and trust scores.
+    """
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Get all devices (or a specific one)
+    device_query = db.query(Device)
+    if device_id is not None:
+        device_query = device_query.filter(Device.id == device_id)
+    devices = device_query.all()
+
+    trend_data = []
+    for device in devices:
+        # For a real implementation, we'd store historical snapshots.
+        # For now, simulate a trend based on the current trust score and
+        # the number of anomalous events over the window. This is vastly
+        # better than pure Math.random() as it reflects actual system state.
+        anomalous_count = (
+            db.query(Event)
+            .filter(
+                Event.device_id == device.id,
+                Event.timestamp >= cutoff,
+                Event.details["is_anomalous"].as_boolean() == True,  # noqa: E712
+            )
+            .count()
+        )
+        positive_count = (
+            db.query(Event)
+            .filter(
+                Event.device_id == device.id,
+                Event.timestamp >= cutoff,
+                Event.severity.in_(["info", "low"]),
+            )
+            .count()
+        )
+
+        total_events = anomalous_count + positive_count
+        if total_events > 0:
+            trend_ratio = positive_count / total_events
+        else:
+            trend_ratio = 0.5
+
+        trend_data.append({
+            "device_id": device.id,
+            "device_name": device.hostname or device.mac,
+            "current_trust_score": device.trust_score,
+            "trend_ratio": round(trend_ratio, 4),
+            "anomalous_events": anomalous_count,
+            "total_events": total_events,
+            "days": days,
+        })
+
+    return {
+        "count": len(trend_data),
+        "data": trend_data,
+    }
+
+
+# ── Production error handler ────────────────────────────────────────
+
+
+@app.exception_handler(Exception)
+async def production_exception_handler(request: Request, exc: Exception):
+    """Generic 500 handler — no stack traces in production."""
+    import logging
+    logger = logging.getLogger("vigil.api")
+    logger.exception(f"Unhandled error on {request.method} {request.url.path}")
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
