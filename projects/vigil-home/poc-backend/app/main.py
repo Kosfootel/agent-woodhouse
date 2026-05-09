@@ -1,24 +1,30 @@
 """Vigil Home - FastAPI Application with AI integration and authentication."""
 
+import asyncio
 import hashlib
+import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import init_db, get_db
-from app.models import Device, Event, Alert, User, RefreshToken
+from app.models import Device, Event, Alert, User, RefreshToken, ApiKey
 from app.detection import start_eve_consumer
-from app.ai import TrustModel, AnomalyDetector, NarrativeGenerator, Severity, DeviceClassifier
+from app.ai import TrustModel, NarrativeGenerator, Severity, DeviceClassifier
 from app.email_notifier import AlertEmailContext, send_alert_email, send_test_email, get_email_status
-from app.ai_persistence import load_trust_model, load_anomaly_detector, store_trust_state, store_anomaly_state
+from app.ai_persistence import store_trust_state, store_anomaly_state, get_anomaly_detector, get_trust_model, reload_all_ai_state
 from app.auth import (
     require_auth,
     optional_auth,
+    require_auth_any,
+    create_api_key,
+    validate_api_key,
     hash_password,
     verify_password,
     create_access_token,
@@ -27,6 +33,8 @@ from app.auth import (
     bootstrap_admin,
     AUTH_DISABLED,
 )
+
+logger = logging.getLogger("vigil.api")
 
 app = FastAPI(
     title="Vigil Home API",
@@ -53,28 +61,26 @@ narrator = NarrativeGenerator()
 classifier = DeviceClassifier()
 
 # Per-device anomaly detectors and trust models (populated on demand)
-_anomaly_detectors: dict[int, AnomalyDetector] = {}
-_trust_models: dict[int, TrustModel] = {}
+# NOTE: Shared runtime cache is now owned by ai_persistence.py.
+# Use get_anomaly_detector() / get_trust_model() from that module.
 
 
 def _get_anomaly_detector(device_id: int, db: Session) -> AnomalyDetector:
-    """Get the AnomalyDetector for a device, loading from DB if not cached."""
-    if device_id not in _anomaly_detectors:
-        detector = load_anomaly_detector(db, device_id)
-        if detector is None:
-            detector = AnomalyDetector(window_size=100, z_threshold=3.0)
-        _anomaly_detectors[device_id] = detector
-    return _anomaly_detectors[device_id]
+    """Get the AnomalyDetector for a device, loading from DB if not cached.
+
+    Delegates to ai_persistence.get_anomaly_detector() which owns the
+    shared in-process cache.
+    """
+    return get_anomaly_detector(device_id, db)
 
 
 def _get_trust_model(device_id: int, db: Session) -> TrustModel:
-    """Get the TrustModel for a device, loading from DB if not cached."""
-    if device_id not in _trust_models:
-        model = load_trust_model(db, device_id)
-        if model is None:
-            model = TrustModel(half_life=86400)
-        _trust_models[device_id] = model
-    return _trust_models[device_id]
+    """Get the TrustModel for a device, loading from DB if not cached.
+
+    Delegates to ai_persistence.get_trust_model() which owns the
+    shared in-process cache.
+    """
+    return get_trust_model(device_id, db)
 
 
 def _severity_to_severity_enum(sev_str: str) -> Severity:
@@ -132,6 +138,13 @@ async def startup():
     db = next(get_db())
     try:
         bootstrap_admin(db)
+    finally:
+        db.close()
+
+    # Warm AI state from DB for all known devices
+    db = next(get_db())
+    try:
+        reload_all_ai_state(db)
     finally:
         db.close()
 
@@ -252,6 +265,128 @@ def auth_logout(
         db.commit()
 
     return {"message": "Logged out"}
+
+
+# ── API Key management endpoints ──────────────────────────────────────
+
+
+class ApiKeyCreateRequest(BaseModel):
+    """Request body for creating a new API key."""
+    label: str
+    role: str = "admin"
+
+
+class ApiKeyListResponse(BaseModel):
+    """Response model for listing API keys (no hashes exposed)."""
+    keys: list
+
+
+@app.get("/auth/api-keys")
+def list_api_keys(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """List all API keys (without the secret hashes)."""
+    keys = db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
+    return {
+        "count": len(keys),
+        "keys": [k.to_dict() for k in keys],
+    }
+
+
+@app.post("/auth/api-keys")
+def create_api_key_endpoint(
+    req: ApiKeyCreateRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Create a new API key.
+
+    Returns the plaintext key exactly once. Store it securely.
+    """
+    result = create_api_key(db, label=req.label, role=req.role)
+    return {
+        "plaintext_key": result["plaintext_key"],
+        "key": result["record"].to_dict(),
+        "warning": "Save this key now — it will not be shown again.",
+    }
+
+
+@app.delete("/auth/api-keys/{key_id}")
+def revoke_api_key(
+    key_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Revoke (deactivate) an API key."""
+    api_key = db.query(ApiKey).filter(ApiKey.id == key_id).first()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    if not api_key.is_active:
+        return {"message": "API key already revoked", "key": api_key.to_dict()}
+
+    api_key.is_active = 0
+    db.commit()
+
+    logger.info(f"API key {api_key.key_prefix}... revoked by user {auth.get('sub')}")
+
+    return {"message": "API key revoked", "key": api_key.to_dict()}
+
+
+# ── SSE Events Stream (realtime alerts) ──────────────────────────────
+
+
+async def _event_generator():
+    """
+    Generator that yields server-sent events.
+
+    Currently a stub that keeps the connection alive and pushes a heartbeat
+    every 30 seconds. Will be wired to a real event bus (pub/sub or asyncio.Queue)
+    in a future update.
+
+    For now, this establishes the SSE endpoint pattern so the dashboard can
+    connect, authenticate, and maintain a persistent connection.
+    """
+    try:
+        while True:
+            # Heartbeat to keep connection alive
+            yield f": heartbeat\n\n"
+            await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        pass
+
+
+@app.get("/events/stream")
+async def events_stream(
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth_any),
+):
+    """
+    Server-Sent Events stream for real-time alerts and events.
+
+    Authentication is handled via:
+    1. Authorization: Bearer <JWT> header (preferred)
+    2. ?token=<JWT> query parameter (for EventSource API)
+    3. X-API-Key header (for headless sensors)
+
+    The dashboard uses EventSource which cannot set custom headers,
+    so the token is passed as a query parameter.
+
+    Stream format:
+    - Heartbeat: `: heartbeat` every 30 seconds
+    - Events: `data: {"type": "alert", "payload": {...}}`
+    """
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
 
 
 # ── Health endpoint (unauthenticated, no sensitive data) ────────────
@@ -888,8 +1023,6 @@ def trust_trend(
 @app.exception_handler(Exception)
 async def production_exception_handler(request: Request, exc: Exception):
     """Generic 500 handler — no stack traces in production."""
-    import logging
-    logger = logging.getLogger("vigil.api")
     logger.exception(f"Unhandled error on {request.method} {request.url.path}")
 
     return JSONResponse(

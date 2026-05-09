@@ -139,4 +139,5 @@ def test_update_custom_weight():
     tm = TrustModel()
     tm.update(positive=False, weight=5.0)
     assert tm.omega == 6.0  # default 1 + 5
-    assert 0.2 < tm.score < 0.3  # α=1, ω=6 → ~0.14
+    # α=1 (prior), ω=6 → score = 1/7 ≈ 0.143
+    assert 0.1 < tm.score < 0.2

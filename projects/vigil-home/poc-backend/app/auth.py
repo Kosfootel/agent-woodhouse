@@ -10,13 +10,14 @@ Implements JWT-based authentication for the FastAPI backend:
 Designed per SECURITY-HARDENING-PLAN.md Phase 0.
 """
 
+import hashlib
 import os
 import secrets
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -145,45 +146,97 @@ def create_refresh_token_expiry() -> datetime:
 # ── FastAPI dependency: require authentication ─────────────────────
 
 async def require_auth(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
 ) -> dict:
-    """FastAPI dependency that validates JWT bearer token.
+    """Combined auth dependency: accepts JWT (Bearer), API key (X-API-Key),
+    or token in query param (?token=).
 
-    Returns the JWT payload dict on success.
-    Raises HTTPException 401 if missing, invalid, or expired.
+    Checks in order:
+    1. Authorization: Bearer <JWT> (standard header)
+    2. X-API-Key header
+    3. Query parameter ?token=<JWT>
+
+    Returns the auth payload dict on success.
+    Raises HTTPException 401 if all methods fail.
     """
     if AUTH_DISABLED:
         return {"sub": "0", "role": "admin", "auth_disabled": True}
 
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    payload = verify_access_token(credentials.credentials)
-    if not payload:
+    # 1. Try Bearer token (JWT)
+    if credentials and credentials.credentials:
+        payload = verify_access_token(credentials.credentials)
+        if payload:
+            return payload
+        # Bearer token present but invalid — don't fall through
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return payload
+    # 2. Try X-API-Key header
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        payload = validate_api_key(api_key, db)
+        if payload:
+            return payload
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or deactivated API key",
+        )
+
+    # 3. Try query parameter token (for SSE)
+    query_token = request.query_params.get("token")
+    if query_token:
+        payload = verify_access_token(query_token)
+        if payload:
+            return payload
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated — provide Bearer token, X-API-Key header, or ?token= query param",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def optional_auth(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
 ) -> Optional[dict]:
     """FastAPI dependency: optional auth — returns payload or None.
 
-    Use for endpoints that work both authenticated and unauthenticated
-    (e.g., SSE streams where the token is in a query param as fallback).
+    Checks Bearer header first, then X-API-Key, then ?token= query param.
+    Returns None if none are present (no 401).
     """
-    if AUTH_DISABLED or not credentials:
-        return None
-    return verify_access_token(credentials.credentials)
+    if AUTH_DISABLED:
+        return {"sub": "0", "role": "admin", "auth_disabled": True}
+
+    # 1. Try Bearer token
+    if credentials and credentials.credentials:
+        payload = verify_access_token(credentials.credentials)
+        if payload:
+            return payload
+
+    # 2. Try X-API-Key
+    api_key = request.headers.get("X-API-Key")
+    if api_key:
+        payload = validate_api_key(api_key, db)
+        if payload:
+            return payload
+
+    # 3. Try query param token
+    query_token = request.query_params.get("token")
+    if query_token:
+        return verify_access_token(query_token)
+
+    return None
 
 
 # ── Admin user bootstrapping ───────────────────────────────────────
@@ -250,3 +303,209 @@ def bootstrap_admin(db: Session) -> User:
         logger.info(f"Admin user '{username}' created")
 
     return admin
+
+
+# ── API Key authentication ──────────────────────────────────────────
+
+
+API_KEY_PREFIX = "vh_"  # vigil-home prefix
+
+
+def generate_api_key() -> str:
+    """Generate a new API key with the vigil-home prefix."""
+    random_part = secrets.token_urlsafe(32)
+    return f"{API_KEY_PREFIX}{random_part}"
+
+
+def hash_api_key(key: str) -> str:
+    """Hash an API key using SHA-256 (consistent with refresh token pattern)."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def get_api_key_prefix(key: str) -> str:
+    """Extract the first 8 chars after prefix for identification."""
+    if key.startswith(API_KEY_PREFIX):
+        return key[len(API_KEY_PREFIX):len(API_KEY_PREFIX) + 8]
+    return key[:8]
+
+
+def create_api_key(db: Session, label: str, role: str = "admin") -> dict:
+    """Create a new API key and store its hash in the database.
+
+    Returns the plaintext key (only shown once) and the stored record.
+    """
+    from app.models import ApiKey
+
+    plaintext = generate_api_key()
+    key_hash = hash_api_key(plaintext)
+    key_prefix = get_api_key_prefix(plaintext)
+
+    api_key = ApiKey(
+        key_prefix=key_prefix,
+        key_hash=key_hash,
+        label=label,
+        role=role,
+    )
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+
+    return {
+        "plaintext_key": plaintext,
+        "record": api_key,
+    }
+
+
+def validate_api_key(key: str, db: Session) -> Optional[dict]:
+    """Validate an API key against stored hashes.
+
+    Returns a payload dict compatible with require_auth if valid,
+    or None if invalid/revoked.
+    """
+    from app.models import ApiKey
+
+    if not key.startswith(API_KEY_PREFIX):
+        return None
+
+    key_hash = hash_api_key(key)
+    stored = db.query(ApiKey).filter(
+        ApiKey.key_hash == key_hash,
+        ApiKey.is_active == 1,
+    ).first()
+
+    if not stored:
+        return None
+
+    # Update last_used_at
+    stored.last_used_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "sub": f"apikey:{stored.id}",
+        "role": stored.role,
+        "auth_method": "apikey",
+        "label": stored.label,
+    }
+
+
+# ── Combined auth middleware ────────────────────────────────────────
+
+
+def _extract_bearer_token(credentials: Optional[HTTPAuthorizationCredentials]) -> Optional[str]:
+    """Extract token from Authorization header."""
+    if credentials:
+        return credentials.credentials
+    return None
+
+
+def _extract_query_token(request: Request) -> Optional[str]:
+    """Extract token from query parameter 'token'.
+
+    Used for SSE connections where EventSource cannot set custom headers.
+    Token in query string is short-lived (handled by caller) and should
+    be stripped from proxy logs.
+    """
+    return request.query_params.get("token")
+
+
+def _extract_header_token(request: Request) -> Optional[str]:
+    """Extract API key from X-API-Key header."""
+    return request.headers.get("X-API-Key")
+
+
+async def require_auth_any(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Combined auth dependency: accepts JWT (Bearer), API key (X-API-Key),
+    or token in query param (?token=).
+
+    Checks in order:
+    1. Authorization: Bearer <JWT> (standard header)
+    2. X-API-Key header
+    3. Query parameter ?token=<JWT>
+
+    Designed for SSE streams and programmatic access where Bearer headers
+    are not always available.
+    """
+    if AUTH_DISABLED:
+        return {"sub": "0", "role": "admin", "auth_disabled": True}
+
+    token = None
+
+    # 1. Try Bearer token (JWT)
+    bearer_token = _extract_bearer_token(credentials)
+    if bearer_token:
+        payload = verify_access_token(bearer_token)
+        if payload:
+            return payload
+        # Bearer token present but invalid — don't fall through to other methods
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 2. Try X-API-Key header
+    api_key = _extract_header_token(request)
+    if api_key:
+        payload = validate_api_key(api_key, db)
+        if payload:
+            return payload
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or deactivated API key",
+        )
+
+    # 3. Try query parameter token (for SSE)
+    query_token = _extract_query_token(request)
+    if query_token:
+        payload = verify_access_token(query_token)
+        if payload:
+            return payload
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated — provide Bearer token, X-API-Key header, or ?token= query param",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def require_api_key(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Auth dependency that requires an API key (X-API-Key header).
+
+    Used for endpoints that should only be accessed via API key,
+    such as event ingestion from Suricata/sensors.
+    """
+    if AUTH_DISABLED:
+        return {"sub": "0", "role": "admin", "auth_disabled": True}
+
+    # API key can come from Authorization: Bearer <key> or X-API-Key header
+    api_key = None
+    if credentials:
+        api_key = credentials.credentials
+
+    if not api_key:
+        # FastAPI Request object isn't available as a default Depends,
+        # so we only check Bearer. X-API-Key users should use require_auth_any.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required in Authorization header",
+        )
+
+    payload = validate_api_key(api_key, db)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or deactivated API key",
+        )
+
+    return payload
