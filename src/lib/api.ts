@@ -1,6 +1,7 @@
-// Proxy through nginx on the same host to avoid CORS issues
-// Production: nginx on 192.168.50.32 proxies /api/* to GX-10:8000
-const API_BASE = "";
+// API_BASE can be overridden via env var for different deploy targets
+// Production (bettermachine-host): "/api" (proxied by nginx to GX-10)
+// Direct (GX-10): "http://192.168.50.30:8000"
+const API_BASE = process.env.VIGIL_API_BASE || "http://192.168.50.30:8000";
 
 async function fetchApi<T>(
   endpoint: string,
