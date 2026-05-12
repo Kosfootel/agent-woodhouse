@@ -1,14 +1,25 @@
 #!/bin/bash
 # Vigil Dashboard Build & Deploy Script
-# Source:  agent-woodhouse (Kosfootel/agent-woodhouse)
-# Target:  agent-shared/vigil/ (Kosfootel/agent-shared)
+# Supports multi-target deployment:
+#   - GX-10 (direct API access):  VIGIL_API_BASE=http://192.168.50.30:8000
+#   - bettermachine-host (proxied): VIGIL_BASE_PATH=/vigil VIGIL_API_BASE=/api
+#
+# Usage:
+#   ./build-and-deploy.sh              # Default: GX-10 target
+#   VIGIL_BASE_PATH=/vigil VIGIL_API_BASE=/api ./build-and-deploy.sh  # bettermachine-host
 
 set -e
 
 VIGIL_SOURCE="$HOME/.openclaw/workspace/projects/vigil-home/dashboard"
 HUB_TARGET="$HOME/.openclaw/workspace/projects/agent-shared/vigil"
 
+# Default to GX-10 direct access if no env vars set
+export VIGIL_API_BASE="${VIGIL_API_BASE:-http://192.168.50.30:8000}"
+export VIGIL_BASE_PATH="${VIGIL_BASE_PATH:-}"
+
 echo "=== Building Vigil Dashboard ==="
+echo "  API_BASE:  $VIGIL_API_BASE"
+echo "  BASE_PATH: $VIGIL_BASE_PATH"
 cd "$VIGIL_SOURCE"
 npm run build
 
@@ -51,6 +62,11 @@ echo "  npm install          # install Next.js runtime deps"
 echo "  git add -A"
 echo "  git commit -m 'Update vigil dashboard'"
 echo "  git push"
+echo ""
+echo "  For bettermachine-host:"
+echo "    rsync -avz --delete $HUB_TARGET/ erik-ross@bettermachine-host:/opt/vigil-dashboard/.next/standalone/"
+echo "    rsync -avz --delete $VIGIL_SOURCE/.next/static/ erik-ross@bettermachine-host:/opt/vigil-dashboard/.next/static/"
+echo "    ssh erik-ross@bettermachine-host 'sudo systemctl restart vigil-dashboard.service'"
 echo ""
 echo "=== Target contents ==="
 ls -la "$HUB_TARGET/"
