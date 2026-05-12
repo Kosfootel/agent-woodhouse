@@ -3,20 +3,25 @@
 Sends critical/high severity alerts via SMTP.
 Supports multiple SMTP providers: Microsoft 365 (Graph API), Gmail (SMTP), iCloud SMTP.
 
-Rate-limited to avoid spamming.
+Uses an asyncio background task queue to avoid blocking the request path.
+All public sync APIs (send_alert_email, send_test_email) enqueue work and return
+immediately. A background asyncio worker drains the queue and sends emails.
+
+Rate-limited to avoid spamming — the rate limiter is checked at send time, not
+at enqueue time.
 """
 
 import os
 import time
 import logging
+import asyncio
 import threading
 import smtplib
-import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
-from typing import Optional
+from typing import Optional, Callable
 
 logger = logging.getLogger("vigil.email")
 
@@ -266,7 +271,7 @@ def _build_html_body(ctx: AlertEmailContext) -> str:
 """
 
 
-# ── SMTP Connection ────────────────────────────────────────────────
+# ── SMTP Connection (synchronous, called by the background worker) ──
 
 def _get_smtp_config() -> Optional[dict]:
     """Resolve SMTP configuration based on the selected provider."""
@@ -305,8 +310,12 @@ def _get_smtp_config() -> Optional[dict]:
     }
 
 
-def _send_email(subject: str, body_text: str, body_html: str) -> bool:
-    """Send an email via the configured SMTP provider."""
+def _send_email_sync(subject: str, body_text: str, body_html: str) -> bool:
+    """Send an email via the configured SMTP provider (blocking).
+
+    This is called by the background worker thread via a thread executor —
+    never on the request path.
+    """
     cfg = _get_smtp_config()
     if not cfg:
         logger.error("Cannot send email: SMTP not configured")
@@ -346,35 +355,163 @@ def _send_email(subject: str, body_text: str, body_html: str) -> bool:
         return False
 
 
+# ── Async Email Queue ──────────────────────────────────────────────
+#
+# An asyncio.Queue holds pending email jobs. A background asyncio task
+# (started from main.py) drains this queue and calls the synchronous
+# SMTP code in a thread executor so it never blocks the event loop.
+#
+# A thread-safe path is provided for callers from non-async contexts
+# (e.g., the Suricata eve.json thread in detection.py): an
+# asyncio.run_coroutine_threadsafe wrapper that uses the running event
+# loop reference.
+
+# The asyncio Queue — items are tuples of (subject, body_text, body_html)
+_email_queue: 'asyncio.Queue[tuple[str, str, str]] | None' = None
+
+# Reference to the running event loop (set by start_email_worker)
+_event_loop: asyncio.AbstractEventLoop | None = None
+
+# Queue size counter (thread-safe via non-mutable read, only modified
+# by the synchronous _build_and_enqueue path)
+_queue_size = 0
+
+
+async def _enqueue_email(subject: str, body_text: str, body_html: str):
+    """Place an email job on the async queue."""
+    if _email_queue is not None:
+        await _email_queue.put((subject, body_text, body_html))
+
+
+async def _email_worker():
+    """Background asyncio task: drain the email queue and send via thread executor.
+
+    Each email is sent in a thread executor to avoid blocking the event loop.
+    Rate limiting is checked at send time against the actual send timestamp.
+    """
+    logger.info("Async email worker started (queue-based, non-blocking send path)")
+    loop = asyncio.get_running_loop()
+
+    while True:
+        try:
+            subject, body_text, body_html = await _email_queue.get()
+            global _queue_size
+            _queue_size -= 1
+
+            # Check rate limiter at send time (in the worker)
+            if not _rate_limiter.allow():
+                logger.warning(
+                    f"Email rate limited (dropping): "
+                    f"{_rate_limiter.remaining} slots remaining in window, "
+                    f"{_rate_limiter.window_remaining:.0f}s until reset. "
+                    f"Subject: {subject}"
+                )
+                _email_queue.task_done()
+                continue
+
+            # Send in thread executor to avoid blocking the event loop
+            await loop.run_in_executor(
+                None,
+                _send_email_sync,
+                subject,
+                body_text,
+                body_html,
+            )
+
+            _email_queue.task_done()
+
+        except asyncio.CancelledError:
+            logger.info("Async email worker cancelled — draining remaining queue")
+            break
+        except Exception as e:
+            logger.exception(f"Email worker error: {e}")
+            _email_queue.task_done()
+
+
+# ── Async Worker Lifecycle ─────────────────────────────────────────
+
+def start_email_worker(loop: asyncio.AbstractEventLoop | None = None) -> asyncio.Task:
+    """Start the background email worker.
+
+    Called from main.py's startup hook. Sets up the queue, stores the event
+    loop reference, and returns the worker Task so the caller can manage its
+    lifecycle.
+
+    Args:
+        loop: Event loop to use. Defaults to the running loop.
+
+    Returns:
+        The asyncio Task for the email worker.
+    """
+    global _email_queue, _event_loop
+
+    _email_queue = asyncio.Queue(maxsize=100)  # cap at 100 pending emails
+    _event_loop = loop or asyncio.get_running_loop()
+
+    worker_task = _event_loop.create_task(_email_worker())
+    logger.info("Email worker started (queue size limit: 100)")
+    return worker_task
+
+
+def stop_email_worker(worker_task: asyncio.Task | None):
+    """Cancel the background email worker.
+
+    Gracefully drains remaining items on cancellation.
+    """
+    if worker_task is not None and not worker_task.done():
+        worker_task.cancel()
+
+
 # ── Public API ─────────────────────────────────────────────────────
 
-def send_alert_email(ctx: AlertEmailContext) -> bool:
-    """Send an alert email with rate limiting.
+def _build_and_enqueue(ctx: AlertEmailContext) -> bool:
+    """Build email parts and enqueue for async sending.
 
-    Returns True if the email was sent, False if rate-limited or failed.
+    Returns True immediately after enqueuing.
+    This is the fast path — no SMTP, no blocking.
     """
-    # Check severity threshold
+    global _queue_size
+
+    # Check severity threshold (fast, no I/O)
     if ctx.severity not in EMAIL_SEVERITY_LEVELS:
         logger.debug(f"Skipping email for {ctx.severity} alert (threshold: {EMAIL_SEVERITY_LEVELS})")
-        return False
-
-    # Check rate limiter
-    if not _rate_limiter.allow():
-        logger.warning(
-            f"Rate limited: {_rate_limiter.remaining} slots available "
-            f"in current window ({_rate_limiter.window_remaining:.0f}s remaining)"
-        )
         return False
 
     subject = _build_email_subject(ctx)
     body_text = _build_email_body(ctx)
     body_html = _build_html_body(ctx)
 
-    return _send_email(subject, body_text, body_html)
+    # Enqueue for the async worker
+    if _event_loop is None or _event_loop.is_closed():
+        # Fallback: no async worker running, send synchronously
+        logger.warning("No async email worker running — sending synchronously")
+        return _send_email_sync(subject, body_text, body_html)
+
+    _queue_size += 1
+
+    asyncio.run_coroutine_threadsafe(
+        _enqueue_email(subject, body_text, body_html),
+        _event_loop,
+    )
+    return True
+
+
+def send_alert_email(ctx: AlertEmailContext) -> bool:
+    """Queue an alert email for async sending.
+
+    Returns True immediately after enqueuing (not after the email is sent).
+    Previously this blocked for 1-5 seconds on SMTP; now it's near-instant.
+
+    If the async worker is not running, falls back to synchronous sending.
+    """
+    return _build_and_enqueue(ctx)
 
 
 def send_test_email() -> dict:
     """Send a test email to verify configuration.
+
+    Test emails bypass the queue and are sent immediately via
+    the synchronous path (blocking, but it's a one-off test).
 
     Returns a dict with status and message.
     """
@@ -392,7 +529,12 @@ def send_test_email() -> dict:
         alert_type="test",
     )
 
-    success = send_alert_email(ctx)
+    subject = _build_email_subject(ctx)
+    body_text = _build_email_body(ctx)
+    body_html = _build_html_body(ctx)
+
+    success = _send_email_sync(subject, body_text, body_html)
+
     if success:
         return {
             "status": "sent",
@@ -430,6 +572,11 @@ def get_email_status() -> dict:
             "max_per_window": ALERT_EMAIL_MAX_PER_WINDOW,
             "window_sec": ALERT_EMAIL_WINDOW_SEC,
             "window_remaining_sec": _rate_limiter.window_remaining,
+        },
+        "queue": {
+            "configured": _email_queue is not None,
+            "pending": _queue_size,
+            "max_size": 100,
         },
         "recipient": ALERT_EMAIL_TO,
         "from": ALERT_EMAIL_FROM,

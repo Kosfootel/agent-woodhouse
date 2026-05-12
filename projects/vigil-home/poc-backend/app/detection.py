@@ -13,8 +13,10 @@ from pathlib import Path
 
 from app.database import SessionLocal
 from app.models import Device, Event, Alert
-from app.ai import TrustModel, AnomalyDetector, NarrativeGenerator, Severity, DeviceClassifier
+from app.ai import NarrativeGenerator, Severity, DeviceClassifier
 from app.email_notifier import AlertEmailContext, send_alert_email
+from app.ai_persistence import store_anomaly_state, store_trust_state
+from app._shared import get_anomaly_detector, get_trust_model, severity_to_severity_enum, build_classification_features
 
 EVE_JSON_PATH = os.environ.get("VIGIL_EVE_JSON", "/var/log/suricata/eve.json")
 POLL_INTERVAL = float(os.environ.get("VIGIL_POLL_INTERVAL", "2.0"))
@@ -23,34 +25,6 @@ POLL_INTERVAL = float(os.environ.get("VIGIL_POLL_INTERVAL", "2.0"))
 
 narrator = NarrativeGenerator()
 classifier = DeviceClassifier()
-
-# Per-device in-memory state
-_anomaly_detectors: dict[int, AnomalyDetector] = {}
-_trust_models: dict[int, TrustModel] = {}
-
-
-def _get_anomaly_detector(device_id: int) -> AnomalyDetector:
-    if device_id not in _anomaly_detectors:
-        _anomaly_detectors[device_id] = AnomalyDetector(window_size=100, z_threshold=3.0)
-    return _anomaly_detectors[device_id]
-
-
-def _get_trust_model(device_id: int) -> TrustModel:
-    if device_id not in _trust_models:
-        _trust_models[device_id] = TrustModel(half_life=86400)
-    return _trust_models[device_id]
-
-
-def _severity_to_severity_enum(sev_str: str) -> Severity:
-    mapping = {
-        "critical": Severity.CRITICAL,
-        "high": Severity.HIGH,
-        "medium": Severity.MEDIUM,
-        "low": Severity.LOW,
-        "info": Severity.INFO,
-    }
-    return mapping.get(sev_str, Severity.INFO)
-
 
 def _extract_anomaly_value(record: dict) -> float | None:
     """Extract a numeric value from a Suricata record for anomaly detection."""
@@ -87,8 +61,8 @@ def _get_or_create_device(db, src_ip: str, src_mac: str | None, hostname: str | 
     mac = src_mac or f"00:00:00:{src_ip.replace('.', ':')}"
 
     # Auto-classify the device
-    features = _build_classification_features(hostname)
-    classifications = classifier.classify(mac, features if features else None, top_n=1)
+    features = build_classification_features(hostname)
+    classifications = classifier.classify(mac, features, top_n=1)
     classified_type = classifications[0].device_type if classifications else None
     classified_confidence = round(classifications[0].confidence, 4) if classifications else None
 
@@ -105,33 +79,10 @@ def _get_or_create_device(db, src_ip: str, src_mac: str | None, hostname: str | 
     db.commit()
     db.refresh(device)
 
-    # Initialize trust model
-    _trust_models[device.id] = TrustModel(half_life=86400)
+    # Initialize trust model in the shared cache
+    get_trust_model(device.id, db)
 
     return device
-
-
-def _build_classification_features(hostname: str | None) -> dict | None:
-    """Build behavioural feature hints from hostname for classification."""
-    if not hostname:
-        return None
-    hl = hostname.lower()
-    features: dict = {}
-    if any(kw in hl for kw in ("cam", "nest", "ring")):
-        features = {"protocols": ["RTSP", "HTTPS", "MQTT"], "ports": [554, 443], "traffic_kbps": 1200.0, "connections_hour": 120}
-    elif any(kw in hl for kw in ("plug", "light", "bulb", "hue")):
-        features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.5, "connections_hour": 5}
-    elif any(kw in hl for kw in ("tv", "roku", "chromecast")):
-        features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSDP"], "ports": [443, 80, 1900], "traffic_kbps": 2000.0, "connections_hour": 80}
-    elif any(kw in hl for kw in ("thermo", "sensor")):
-        features = {"protocols": ["MQTT", "HTTPS"], "ports": [443, 1883], "traffic_kbps": 0.2, "connections_hour": 10}
-    elif any(kw in hl for kw in ("phone", "iphone", "android")):
-        features = {"protocols": ["HTTPS", "HTTP", "DNS"], "ports": [443, 80, 53], "traffic_kbps": 500.0, "connections_hour": 100}
-    elif any(kw in hl for kw in ("laptop", "macbook", "thinkpad", "pc-", "desktop")):
-        features = {"protocols": ["HTTPS", "HTTP", "DNS", "SSH"], "ports": [443, 80, 53, 22], "traffic_kbps": 1000.0, "connections_hour": 200}
-    if features:
-        features["active_hour"] = datetime.now(timezone.utc).hour
-    return features if features else None
 
 
 def _guess_device_type(hostname: str | None) -> str | None:
@@ -160,7 +111,7 @@ def _update_trust_score(device_id: int, severity_str: str, db) -> float:
     Positive events (info/low) increase trust; negative events (high/critical)
     decrease it.
     """
-    model = _get_trust_model(device_id)
+    model = get_trust_model(device_id, db)
     model.decay(time.time())
 
     if severity_str in ("critical", "high"):
@@ -168,6 +119,8 @@ def _update_trust_score(device_id: int, severity_str: str, db) -> float:
     elif severity_str in ("info", "low"):
         model.update(positive=True)
     # medium: neutral — no update
+
+    store_trust_state(db, device_id, model)
 
     return round(model.score, 4)
 
@@ -205,11 +158,12 @@ def process_eve_line(line: str, db):
     # ── Anomaly detection on numeric metrics ──
     anomaly_value = _extract_anomaly_value(record)
     if anomaly_value is not None:
-        detector = _get_anomaly_detector(device.id)
+        detector = get_anomaly_detector(device.id, db)
         result = detector.record(anomaly_value)
         if result and result.is_anomaly:
             is_anomalous = True
             z_score = round(result.z_score, 4)
+        store_anomaly_state(db, device.id, detector)
 
     if event_type == "alert":
         alert_data = record.get("alert", {})
@@ -235,7 +189,7 @@ def process_eve_line(line: str, db):
         # Generate narrative for this alert using the AI module
         dev_name = device.hostname or device.mac
         dev_type = device.device_type or "unknown"
-        severity_enum = _severity_to_severity_enum(severity)
+        severity_enum = severity_to_severity_enum(severity)
 
         alert_obj = narrator.alert(
             device_name=dev_name,

@@ -7,6 +7,19 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+# ── Online-status threshold ─────────────────────────────────────────
+THRESHOLD_MINUTES = 5
+
+
+def is_online(last_seen: datetime | str) -> bool:
+    """Determine whether a device is online based on its last_seen timestamp."""
+    if isinstance(last_seen, str):
+        last_seen = datetime.fromisoformat(last_seen)
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=THRESHOLD_MINUTES)
+    return last_seen > cutoff
+
 from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,8 +30,9 @@ from app.database import init_db, get_db
 from app.models import Device, Event, Alert, User, RefreshToken, ApiKey
 from app.detection import start_eve_consumer
 from app.ai import TrustModel, NarrativeGenerator, Severity, DeviceClassifier
-from app.email_notifier import AlertEmailContext, send_alert_email, send_test_email, get_email_status
+from app.email_notifier import AlertEmailContext, send_alert_email, send_test_email, get_email_status, start_email_worker
 from app.ai_persistence import store_trust_state, store_anomaly_state, get_anomaly_detector, get_trust_model, reload_all_ai_state
+from app._shared import severity_to_severity_enum
 from app.auth import (
     require_auth,
     optional_auth,
@@ -33,6 +47,7 @@ from app.auth import (
     bootstrap_admin,
     AUTH_DISABLED,
 )
+from app.rate_limiter import limiter, AUTH_LIMITS, SSE_LIMITS, GENERAL_LIMITS, EMAIL_SEND_LIMITS, configure_rate_limiting
 
 logger = logging.getLogger("vigil.api")
 
@@ -41,6 +56,9 @@ app = FastAPI(
     description="IoT threat detection backend with AI scoring",
     version="0.3.0",
 )
+
+# Configure rate limiting (attaches limiter to app.state)
+configure_rate_limiting(app)
 
 # ── CORS ────────────────────────────────────────────────────────────
 
@@ -60,39 +78,10 @@ app.add_middleware(
 narrator = NarrativeGenerator()
 classifier = DeviceClassifier()
 
-# Per-device anomaly detectors and trust models (populated on demand)
-# NOTE: Shared runtime cache is now owned by ai_persistence.py.
+# AI runtime instances maintained in this module; shared cache (anomaly
+# detectors, trust models) owned by ai_persistence.py.
 # Use get_anomaly_detector() / get_trust_model() from that module.
-
-
-def _get_anomaly_detector(device_id: int, db: Session) -> AnomalyDetector:
-    """Get the AnomalyDetector for a device, loading from DB if not cached.
-
-    Delegates to ai_persistence.get_anomaly_detector() which owns the
-    shared in-process cache.
-    """
-    return get_anomaly_detector(device_id, db)
-
-
-def _get_trust_model(device_id: int, db: Session) -> TrustModel:
-    """Get the TrustModel for a device, loading from DB if not cached.
-
-    Delegates to ai_persistence.get_trust_model() which owns the
-    shared in-process cache.
-    """
-    return get_trust_model(device_id, db)
-
-
-def _severity_to_severity_enum(sev_str: str) -> Severity:
-    """Map backend severity string to narrative Severity enum."""
-    mapping = {
-        "critical": Severity.CRITICAL,
-        "high": Severity.HIGH,
-        "medium": Severity.MEDIUM,
-        "low": Severity.LOW,
-        "info": Severity.INFO,
-    }
-    return mapping.get(sev_str, Severity.INFO)
+# Use severity_to_severity_enum() from app._shared.
 
 
 # ── Request models ─────────────────────────────────────────────────
@@ -129,6 +118,20 @@ class RefreshRequest(BaseModel):
 # ── Startup ─────────────────────────────────────────────────────────
 
 
+async def startup_email_worker():
+    """Start the async email queue worker for non-blocking email sending.
+
+    The email worker runs on the same event loop, draining an async queue.
+    SMTP sending is dispatched to a thread executor so it never blocks the
+    request path.
+    """
+    try:
+        start_email_worker()
+    except Exception as e:
+        # Don't block startup if email worker fails to init
+        logger.warning(f"Email worker failed to start: {e}")
+
+
 @app.on_event("startup")
 async def startup():
     from app.database import init_db as _init_db
@@ -148,6 +151,9 @@ async def startup():
     finally:
         db.close()
 
+    # Start async email worker (non-blocking email queue)
+    await startup_email_worker()
+
     start_eve_consumer()
 
 
@@ -155,7 +161,8 @@ async def startup():
 
 
 @app.post("/auth/login")
-def auth_login(req: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(AUTH_LIMITS)
+def auth_login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Authenticate with username and password.
 
     Returns JWT access token + opaque refresh token.
@@ -189,7 +196,8 @@ def auth_login(req: LoginRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/refresh")
-def auth_refresh(req: RefreshRequest, db: Session = Depends(get_db)):
+@limiter.limit(AUTH_LIMITS)
+def auth_refresh(req: RefreshRequest, request: Request, db: Session = Depends(get_db)):
     """Exchange a refresh token for a new access + refresh token pair.
 
     Implements refresh token rotation: the old token is revoked and a
@@ -248,8 +256,10 @@ def auth_refresh(req: RefreshRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/logout")
+@limiter.limit(AUTH_LIMITS)
 def auth_logout(
     req: RefreshRequest,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -282,7 +292,9 @@ class ApiKeyListResponse(BaseModel):
 
 
 @app.get("/auth/api-keys")
+@limiter.limit(GENERAL_LIMITS)
 def list_api_keys(
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -295,8 +307,10 @@ def list_api_keys(
 
 
 @app.post("/auth/api-keys")
+@limiter.limit(GENERAL_LIMITS)
 def create_api_key_endpoint(
     req: ApiKeyCreateRequest,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -313,8 +327,10 @@ def create_api_key_endpoint(
 
 
 @app.delete("/auth/api-keys/{key_id}")
+@limiter.limit(GENERAL_LIMITS)
 def revoke_api_key(
     key_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -358,6 +374,7 @@ async def _event_generator():
 
 
 @app.get("/events/stream")
+@limiter.limit(SSE_LIMITS)
 async def events_stream(
     request: Request,
     db: Session = Depends(get_db),
@@ -402,7 +419,9 @@ def health_check():
 
 
 @app.get("/devices")
+@limiter.limit(GENERAL_LIMITS)
 def list_devices(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -417,8 +436,10 @@ def list_devices(
 
 
 @app.get("/devices/{device_id}")
+@limiter.limit(GENERAL_LIMITS)
 def get_device(
     device_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -450,8 +471,10 @@ def get_device(
 
 
 @app.post("/devices")
+@limiter.limit(GENERAL_LIMITS)
 def create_device(
     req: BaselineRequest,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -520,7 +543,6 @@ def create_device(
     db.refresh(device)
 
     # Store trust model in memory and persist
-    _trust_models[device.id] = trust_model
     store_trust_state(db, device.id, trust_model)
 
     return {"message": "Device created", "device": device.to_dict()}
@@ -530,8 +552,10 @@ def create_device(
 
 
 @app.post("/events")
+@limiter.limit(GENERAL_LIMITS)
 def ingest_event(
     req: EventIngest,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -544,7 +568,7 @@ def ingest_event(
     is_anomalous = False
     z_score = None
     if req.value is not None:
-        detector = _get_anomaly_detector(device.id, db)
+        detector = get_anomaly_detector(device.id, db)
         result = detector.record(req.value)
         if result and result.is_anomaly:
             is_anomalous = True
@@ -552,7 +576,7 @@ def ingest_event(
         store_anomaly_state(db, device.id, detector)
 
     # Trust update
-    trust_model = _get_trust_model(device.id, db)
+    trust_model = get_trust_model(device.id, db)
     if is_anomalous:
         trust_model.update(positive=False)
     else:
@@ -564,7 +588,7 @@ def ingest_event(
     # Create alert if anomalous
     alert_data = None
     if is_anomalous:
-        severity_enum = _severity_to_severity_enum(req.severity)
+        severity_enum = severity_to_severity_enum(req.severity)
         device_info = db.query(Device).filter(Device.id == req.device_id).first()
         dev_name = device_info.hostname or device_info.mac
         dev_type = device_info.device_type or "unknown"
@@ -644,7 +668,9 @@ def ingest_event(
 
 
 @app.get("/events")
+@limiter.limit(GENERAL_LIMITS)
 def list_events(
+    request: Request,
     device_id: Optional[int] = Query(None),
     event_type: Optional[str] = Query(None),
     severity: Optional[str] = Query(None, pattern="^(info|low|medium|high|critical)$"),
@@ -672,7 +698,9 @@ def list_events(
 
 
 @app.get("/alerts")
+@limiter.limit(GENERAL_LIMITS)
 def list_alerts(
+    request: Request,
     status: Optional[str] = Query(None, pattern="^(open|acknowledged|resolved)$"),
     severity: Optional[str] = Query(None, pattern="^(low|medium|high|critical)$"),
     skip: int = Query(0, ge=0),
@@ -694,8 +722,10 @@ def list_alerts(
 
 
 @app.get("/alerts/{alert_id}")
+@limiter.limit(GENERAL_LIMITS)
 def get_alert(
     alert_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -715,8 +745,10 @@ def get_alert(
 
 
 @app.get("/alerts/{alert_id}/narrative")
+@limiter.limit(GENERAL_LIMITS)
 def get_alert_narrative(
     alert_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -740,7 +772,7 @@ def get_alert_narrative(
 
     dev_name = device.hostname or device.mac
     dev_type = device.device_type or "unknown"
-    severity_enum = _severity_to_severity_enum(alert.severity)
+    severity_enum = severity_to_severity_enum(alert.severity)
 
     # Find recent events for context
     recent_event = (
@@ -776,8 +808,10 @@ def get_alert_narrative(
 
 
 @app.patch("/alerts/{alert_id}/acknowledge")
+@limiter.limit(GENERAL_LIMITS)
 def acknowledge_alert(
     alert_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -787,6 +821,9 @@ def acknowledge_alert(
         raise HTTPException(status_code=404, detail="Alert not found")
 
     alert.status = "acknowledged"
+    alert.acknowledged_at = datetime.now(timezone.utc)
+    # Use username from auth payload if available; fallback to user ID
+    alert.acknowledged_by = auth.get("sub") or "system"
     db.commit()
 
     return {
@@ -795,24 +832,52 @@ def acknowledge_alert(
     }
 
 
+@app.patch("/alerts/{alert_id}/unacknowledge")
+@limiter.limit(GENERAL_LIMITS)
+def unacknowledge_alert(
+    alert_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Unacknowledge an alert (status -> 'open')."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.status = "open"
+    alert.acknowledged_at = None
+    alert.acknowledged_by = None
+    db.commit()
+
+    return {
+        "message": "Alert unacknowledged",
+        "alert": alert.to_dict(),
+    }
+
+
 # ── Email notification endpoints ─────────────────────────────────────
 
 
 @app.get("/email/status")
-def email_status(auth: dict = Depends(require_auth)):
+@limiter.limit(GENERAL_LIMITS)
+def email_status(request: Request, auth: dict = Depends(require_auth)):
     """Get email notification system status."""
     return get_email_status()
 
 
 @app.get("/email/test")
-def email_test(auth: dict = Depends(require_auth)):
+@limiter.limit(EMAIL_SEND_LIMITS)
+def email_test(request: Request, auth: dict = Depends(require_auth)):
     """Send a test email to verify SMTP configuration."""
     return send_test_email()
 
 
 @app.post("/email/send-alert")
+@limiter.limit(EMAIL_SEND_LIMITS)
 def email_send_alert(
     alert_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -852,8 +917,10 @@ def email_send_alert(
 
 
 @app.post("/baseline")
+@limiter.limit(GENERAL_LIMITS)
 def create_baseline(
     req: BaselineRequest,
+    request: Request,
     db: Session = Depends(get_db),
     auth: dict = Depends(require_auth),
 ):
@@ -897,7 +964,7 @@ def create_baseline(
         db.add(device)
         db.commit()
         db.refresh(device)
-        _trust_models[device.id] = trust_model
+        store_trust_state(db, device.id, trust_model)
         return {"message": "Device created", "device": device.to_dict()}
 
     # Update existing device
@@ -917,8 +984,10 @@ def create_baseline(
 
 
 @app.get("/classify/{mac}")
+@limiter.limit(GENERAL_LIMITS)
 def classify_device(
     mac: str,
+    request: Request,
     auth: dict = Depends(require_auth),
 ):
     """Classify a device by MAC address (standalone, no DB needed)."""
@@ -941,7 +1010,8 @@ def classify_device(
 
 
 @app.get("/known-device-types")
-def known_device_types(auth: dict = Depends(require_auth)):
+@limiter.limit(GENERAL_LIMITS)
+def known_device_types(request: Request, auth: dict = Depends(require_auth)):
     """List all known device types with their behavioural signatures."""
     return classifier.known_devices()
 
@@ -950,7 +1020,9 @@ def known_device_types(auth: dict = Depends(require_auth)):
 
 
 @app.get("/trust-trend")
+@limiter.limit(GENERAL_LIMITS)
 def trust_trend(
+    request: Request,
     days: int = Query(7, ge=1, le=90),
     device_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
