@@ -694,7 +694,63 @@ def list_events(
     }
 
 
+class ManualAlertRequest(BaseModel):
+    device_id: int
+    alert_type: str
+    severity: str
+    narrative: Optional[str] = None
+
+
 # ── Alert endpoints ─────────────────────────────────────────────────
+
+
+@app.post("/alerts")
+@limiter.limit(GENERAL_LIMITS)
+def create_alert(
+    req: ManualAlertRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Manually create a security alert."""
+    device = db.query(Device).filter(Device.id == req.device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    alert = Alert(
+        device_id=req.device_id,
+        alert_type=req.alert_type,
+        severity=req.severity,
+        narrative=req.narrative or f"Manual alert: {req.alert_type}",
+        status="open",
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+
+    # Send email for critical/high alerts
+    if req.severity in ("critical", "high"):
+        try:
+            dev_name = device.hostname or device.mac
+            dev_type = device.device_type or "unknown"
+            email_ctx = AlertEmailContext(
+                severity=req.severity,
+                title=req.alert_type,
+                description=alert.narrative,
+                timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+                device_name=dev_name,
+                mac_address=device.mac,
+                trust_score=device.trust_score,
+                device_type=dev_type,
+                device_id=device.id,
+                alert_id=alert.id,
+                alert_type=req.alert_type,
+            )
+            send_alert_email(email_ctx)
+        except Exception as e:
+            logger.error(f"Failed to send alert email: {e}")
+
+    return {"message": "Alert created", "alert": alert.to_dict()}
 
 
 @app.get("/alerts")

@@ -22,6 +22,8 @@ class Device(Base):
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
+        # Import here to avoid circular dependency with main.py
+        from app.main import is_online
         return {
             "id": self.id,
             "mac": self.mac,
@@ -33,6 +35,7 @@ class Device(Base):
             "classified_confidence": self.classified_confidence,
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
+            "online": is_online(self.last_seen.isoformat()),
         }
 
 
@@ -111,6 +114,8 @@ class Alert(Base):
     severity = Column(String(16), default="medium")
     narrative = Column(Text, nullable=True)
     status = Column(String(16), default="open")
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by = Column(String(64), nullable=True)
 
     def to_dict(self):
         return {
@@ -122,6 +127,8 @@ class Alert(Base):
             "narrative": self.narrative,
             "status": self.status,
             "acknowledged": self.status in ("acknowledged", "resolved"),
+            "acknowledged_at": self.acknowledged_at.isoformat() if self.acknowledged_at else None,
+            "acknowledged_by": self.acknowledged_by,
         }
 
 
@@ -162,3 +169,28 @@ class RefreshToken(Base):
 
     def is_active(self) -> bool:
         return not self.revoked and not self.is_expired()
+
+
+class ApiKey(Base):
+    """API key for programmatic/auth-headless access."""
+    __tablename__ = "api_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    key_prefix = Column(String(16), nullable=False)
+    key_hash = Column(String(128), unique=True, nullable=False, index=True)
+    label = Column(String(128), nullable=False)
+    role = Column(String(32), nullable=False, default="admin")
+    is_active = Column(Integer, default=1)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "key_prefix": self.key_prefix,
+            "label": self.label,
+            "role": self.role,
+            "is_active": bool(self.is_active),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
+        }
