@@ -71,3 +71,39 @@ export interface NetworkSummary {
   alerts_warning: number;
   alerts_info: number;
 }
+
+// ── Backend API response shapes ────────────────────────────────
+// These match the FastAPI backend models (models.py to_dict() output).
+
+export interface BackendDevice {
+  id: number;
+  mac: string;
+  ip: string;
+  hostname: string | null;
+  device_type: string | null;
+  trust_score: number;
+  classified_type: string | null;
+  classified_confidence: number | null;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface BackendAlert {
+  id: number;
+  device_id: number;
+  timestamp: string;
+  alert_type: string;
+  severity: string;
+  narrative: string | null;
+  status: string;
+  acknowledged: boolean;
+}
+
+export interface BackendEvent {
+  id: number;
+  device_id: number;
+  timestamp: string;
+  event_type: string;
+  severity: string;
+  details: Record<string, unknown> | null;
+}

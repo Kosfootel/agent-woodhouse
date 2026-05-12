@@ -2,19 +2,19 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, AlertTriangle, Info } from "lucide-react";
+import { CheckCircle2, AlertTriangle, Info, Loader2 } from "lucide-react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import { useAlerts } from "@/hooks/useDevices";
+import { useAlerts, useAcknowledgeAlert } from "@/hooks/useDevices";
 import { formatTimestamp } from "@/lib/utils";
 import type { Alert } from "@/lib/types";
 
 export default function AlertsPage() {
   const { data: alerts, isLoading } = useAlerts();
+  const acknowledgeMutation = useAcknowledgeAlert();
   const [showAll, setShowAll] = useState(false);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
 
   const filteredAlerts = useMemo(() => {
     if (!alerts) return [];
@@ -23,7 +23,7 @@ export default function AlertsPage() {
 
     // Show unacknowledged only by default
     if (!showAll) {
-      filtered = filtered.filter((a) => !a.acknowledged && !acknowledged.has(a.id));
+      filtered = filtered.filter((a) => !a.acknowledged);
     }
 
     // Severity filter
@@ -37,15 +37,15 @@ export default function AlertsPage() {
     );
 
     return filtered;
-  }, [alerts, showAll, severityFilter, acknowledged]);
+  }, [alerts, showAll, severityFilter]);
 
   const handleAcknowledge = (alert: Alert) => {
-    setAcknowledged((prev) => new Set([...prev, alert.id]));
+    acknowledgeMutation.mutate(alert.id);
   };
 
   const handleAcknowledgeAll = () => {
     if (alerts) {
-      setAcknowledged(new Set(alerts.map((a) => a.id)));
+      alerts.forEach((a) => acknowledgeMutation.mutate(a.id));
     }
   };
 
@@ -69,8 +69,8 @@ export default function AlertsPage() {
             Security events requiring attention
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleAcknowledgeAll}>
-          <CheckCircle2 size={16} />
+        <Button variant="ghost" size="sm" onClick={handleAcknowledgeAll} disabled={acknowledgeMutation.isPending}>
+          {acknowledgeMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
           Acknowledge All
         </Button>
       </div>
@@ -140,6 +140,9 @@ export default function AlertsPage() {
               alert={alert}
               onAcknowledge={() => handleAcknowledge(alert)}
               severityIcon={severityIcon(alert.severity)}
+              isAcknowledging={
+                acknowledgeMutation.isPending
+              }
             />
           ))}
         </div>
@@ -152,10 +155,12 @@ function AlertCard({
   alert,
   onAcknowledge,
   severityIcon,
+  isAcknowledging,
 }: {
   alert: Alert;
   onAcknowledge: () => void;
   severityIcon: React.ReactNode;
+  isAcknowledging: boolean;
 }) {
   const router = useRouter();
 
@@ -187,6 +192,12 @@ function AlertCard({
             <span className="text-xs text-slate-500">
               {formatTimestamp(alert.timestamp)}
             </span>
+            {alert.acknowledged && (
+              <span className="text-xs text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 size={12} />
+                Acknowledged
+              </span>
+            )}
           </div>
           <p className="text-sm font-medium text-slate-200">{alert.title}</p>
           <p className="text-sm text-slate-400 mt-0.5">{alert.description}</p>
@@ -199,13 +210,20 @@ function AlertCard({
                 View device →
               </button>
             )}
-            <button
-              onClick={onAcknowledge}
-              className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"
-            >
-              <CheckCircle2 size={12} />
-              Acknowledge
-            </button>
+            {!alert.acknowledged && (
+              <button
+                onClick={onAcknowledge}
+                disabled={isAcknowledging}
+                className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1 disabled:opacity-50"
+              >
+                {isAcknowledging ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={12} />
+                )}
+                Acknowledge
+              </button>
+            )}
           </div>
         </div>
       </div>

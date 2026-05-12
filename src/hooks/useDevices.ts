@@ -7,6 +7,8 @@ import {
   fetchAlerts,
   fetchEvents,
   markAsTrusted,
+  acknowledgeAlert,
+  unacknowledgeAlert,
   fetchNetworkSummary,
   fetchTrustTrend,
   fetchDeviceTypeBreakdown,
@@ -14,6 +16,7 @@ import {
   fetchTopTalkers,
 } from "@/lib/api";
 import type { Device } from "@/lib/types";
+
 export function useDevices() {
   return useQuery({
     queryKey: ["devices"],
@@ -87,10 +90,32 @@ export function useTopTalkers() {
   });
 }
 
+export function useAcknowledgeAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (alertId: string | number) => acknowledgeAlert(alertId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["networkSummary"] });
+    },
+  });
+}
+
+export function useUnacknowledgeAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (alertId: string | number) => unacknowledgeAlert(alertId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["networkSummary"] });
+    },
+  });
+}
+
 export function useMarkAsTrusted() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (device: Device) => markAsTrusted(device.mac),
+    mutationFn: (device: Device) => markAsTrusted(device),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["devices"] });
       queryClient.invalidateQueries({ queryKey: ["networkSummary"] });

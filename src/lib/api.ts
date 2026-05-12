@@ -31,14 +31,43 @@ import type {
   DeviceTypeCount,
   AlertVolume,
   TopTalker,
+  BackendDevice,
+  BackendAlert,
+  BackendEvent,
 } from "./types";
 
 export async function fetchDevices(): Promise<Device[]> {
-  return fetchApi<Device[]>("/devices");
+  const data = await fetchApi<{ count: number; devices: BackendDevice[] }>("/devices");
+  return (data.devices || []).map((d: BackendDevice) => ({
+    id: String(d.id),
+    mac: d.mac,
+    ip: d.ip,
+    name: d.hostname || d.mac,
+    device_type: d.device_type || "unknown",
+    trust_score: d.trust_score ?? 0.5,
+    first_seen: d.first_seen,
+    last_seen: d.last_seen,
+    online: "online" in d ? Boolean((d as { online?: boolean }).online) : true,
+    confidence: d.classified_confidence ?? undefined,
+    behavior: undefined,
+  }));
 }
 
 export async function fetchDevice(id: string): Promise<Device> {
-  return fetchApi<Device>(`/devices/${id}`);
+  const d: BackendDevice & { recent_events?: BackendEvent[]; open_alerts?: BackendAlert[] } = await fetchApi(`/devices/${id}`);
+  return {
+    id: String(d.id),
+    mac: d.mac,
+    ip: d.ip,
+    name: d.hostname || d.mac,
+    device_type: d.device_type || "unknown",
+    trust_score: d.trust_score ?? 0.5,
+    first_seen: d.first_seen,
+    last_seen: d.last_seen,
+    online: "online" in d ? Boolean((d as { online?: boolean }).online) : true,
+    confidence: d.classified_confidence ?? undefined,
+    behavior: undefined,
+  };
 }
 
 export async function classifyDevice(mac: string): Promise<{
@@ -48,19 +77,54 @@ export async function classifyDevice(mac: string): Promise<{
   return fetchApi(`/classify/${mac}`);
 }
 
-export async function markAsTrusted(mac: string): Promise<void> {
+export async function markAsTrusted(device: Device): Promise<void> {
   return fetchApi("/baseline", {
     method: "POST",
-    body: JSON.stringify({ mac }),
+    body: JSON.stringify({
+      mac: device.mac,
+      ip: device.ip,
+      hostname: device.name,
+      device_type: device.device_type,
+    }),
   });
 }
 
 export async function fetchAlerts(): Promise<Alert[]> {
-  return fetchApi<Alert[]>("/alerts");
+  const data = await fetchApi<{ count: number; alerts: BackendAlert[] }>("/alerts");
+  // Map backend response fields to frontend Alert interface
+  return (data.alerts || []).map((a: BackendAlert) => ({
+    id: String(a.id),
+    severity: a.severity === "high" || a.severity === "critical" ? "critical" as const : a.severity === "medium" ? "warning" as const : "info" as const,
+    title: a.alert_type || "Alert",
+    description: a.narrative || "No details available",
+    timestamp: a.timestamp,
+    device_id: a.device_id != null ? String(a.device_id) : undefined,
+    acknowledged: a.acknowledged === true,
+  }));
+}
+
+export async function acknowledgeAlert(alertId: string | number): Promise<void> {
+  await fetchApi(`/alerts/${alertId}/acknowledge`, {
+    method: "PATCH",
+  });
+}
+
+export async function unacknowledgeAlert(alertId: string | number): Promise<void> {
+  await fetchApi(`/alerts/${alertId}/unacknowledge`, {
+    method: "PATCH",
+  });
 }
 
 export async function fetchEvents(): Promise<Event[]> {
-  return fetchApi<Event[]>("/events");
+  const data = await fetchApi<{ count: number; events: BackendEvent[] }>("/events");
+  return (data.events || []).map((e: BackendEvent) => ({
+    id: String(e.id),
+    device_id: String(e.device_id),
+    device_name: (e.details as Record<string, string>)?.device_name || "",
+    event_type: e.event_type,
+    description: (e.details as Record<string, string>)?.description || e.event_type,
+    timestamp: e.timestamp,
+  }));
 }
 
 export async function fetchNetworkSummary(): Promise<NetworkSummary> {
