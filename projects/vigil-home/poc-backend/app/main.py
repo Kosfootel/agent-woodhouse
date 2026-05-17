@@ -1145,6 +1145,129 @@ def trust_trend(
     }
 
 
+
+
+# ── Health Score Endpoint ─────────────────────────────────────────
+
+@app.get("/health/score")
+async def get_network_health_score(db: Session = Depends(get_db)):
+    """
+    Calculate an overall network health score (0-100).
+    """
+    now = datetime.utcnow()
+    total_devices = db.query(Device).count()
+    if total_devices == 0:
+        return {"score": 100, "status": "healthy", "message": "No devices monitored yet"}
+    
+    avg_trust = db.query(func.avg(Device.trust_score)).scalar() or 0
+    trust_component = avg_trust * 40
+    
+    critical_alerts = db.query(Alert).filter(
+        Alert.severity == "critical", Alert.acknowledged == False
+    ).count()
+    warning_alerts = db.query(Alert).filter(
+        Alert.severity == "warning", Alert.acknowledged == False
+    ).count()
+    alert_penalty = min(critical_alerts * 5 + warning_alerts * 2, 30)
+    alert_component = 30 - alert_penalty
+    
+    last_24h = now - timedelta(hours=24)
+    new_devices = db.query(Device).filter(Device.first_seen >= last_24h).count()
+    untrusted = db.query(Device).filter(
+        Device.containment_status.in_(["pending_review", "under_observation"])
+    ).count()
+    device_penalty = min((new_devices * 3 + untrusted * 2), 20)
+    device_component = 20 - device_penalty
+    
+    offline_threshold = now - timedelta(minutes=5)
+    offline_devices = db.query(Device).filter(
+        or_(Device.last_seen < offline_threshold, Device.last_seen == None)
+    ).count()
+    offline_penalty = min(offline_devices * 2, 10)
+    offline_component = 10 - offline_penalty
+    
+    total_score = trust_component + alert_component + device_component + offline_component
+    total_score = max(0, min(100, round(total_score)))
+    
+    if total_score >= 80:
+        status, message = "healthy", "Your network is in good shape"
+    elif total_score >= 60:
+        status, message = "caution", "Some attention needed"
+    elif total_score >= 40:
+        status, message = "warning", "Review recommended"
+    else:
+        status, message = "critical", "Immediate attention required"
+    
+    return {
+        "score": total_score,
+        "status": status,
+        "message": message,
+        "factors": {
+            "trust_score": round(avg_trust * 100, 1),
+            "trust_component": round(trust_component, 1),
+            "critical_alerts": critical_alerts,
+            "warning_alerts": warning_alerts,
+            "alert_component": round(alert_component, 1),
+            "new_devices_24h": new_devices,
+            "untrusted_devices": untrusted,
+            "device_component": round(device_component, 1),
+            "offline_devices": offline_devices,
+            "offline_component": round(offline_component, 1)
+        },
+        "timestamp": now.isoformat()
+    }
+
+
+# ── What's New Feed Endpoint ───────────────────────────────────────
+
+@app.get("/feed/whats-new")
+async def get_whats_new_feed(
+    limit: int = Query(default=20, ge=1, le=100),
+    hours: int = Query(default=168, ge=1, le=720),
+    db: Session = Depends(get_db)
+):
+    """Get a timeline of what's new on the network."""
+    since = datetime.utcnow() - timedelta(hours=hours)
+    feed_items = []
+    
+    # New devices
+    new_devices = db.query(Device).filter(Device.first_seen >= since).all()
+    for device in new_devices:
+        feed_items.append({
+            "type": "new_device",
+            "timestamp": device.first_seen.isoformat(),
+            "title": f"New device: {device.nickname or device.hostname or device.mac}",
+            "description": f"Device type: {device.classified_type or 'Unknown'}",
+            "device_id": device.id,
+            "severity": "info",
+            "icon": "device"
+        })
+    
+    # Unacknowledged alerts
+    recent_alerts = db.query(Alert).filter(
+        Alert.timestamp >= since, Alert.acknowledged == False
+    ).order_by(Alert.timestamp.desc()).limit(20).all()
+    
+    for alert in recent_alerts:
+        feed_items.append({
+            "type": "alert",
+            "timestamp": alert.timestamp.isoformat(),
+            "title": alert.title,
+            "description": alert.narrative or alert.description,
+            "alert_id": alert.id,
+            "device_id": alert.device_id,
+            "severity": alert.severity,
+            "icon": "alert" if alert.severity == "critical" else "warning"
+        })
+    
+    feed_items.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    return {
+        "count": len(feed_items[:limit]),
+        "items": feed_items[:limit],
+        "period_hours": hours
+    }
+
 # ── Production error handler ────────────────────────────────────────
 
 
