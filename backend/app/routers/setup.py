@@ -168,7 +168,7 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
             # Create event log
             event = Event(
                 type='device_joined',
-                description=f"New device discovered: {new_device.name} ({new_device.ip})"
+                description=f"New device discovered: {new_device.hostname} ({new_device.ip})"
             )
             db.add(event)
         
