@@ -1,17 +1,9 @@
-"""
-Vigil Tier A - Backend Security Service
+"""Vigil Tier A - Backend Security Service
 FastAPI application for security scanning, logging, and anomaly detection.
 """
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import security, devices, alerts, stats, setup, discovery
-from app.routers.events import router as events_router
-from app.routers.admin import router as admin_router
-from app.models import init_db
-
-# Initialize database on startup
-init_db()
+from app.routers import security, devices, alerts, stats, setup, agents
 
 app = FastAPI(
     title="Vigil Security Service",
@@ -19,10 +11,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Configure CORS - allow all origins for local network
+# Configure CORS - allow dashboard origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://192.168.50.30:8085", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,9 +26,7 @@ app.include_router(devices.router, prefix="/api")
 app.include_router(alerts.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(setup.router, prefix="/api")
-app.include_router(discovery.router, prefix="/api")
-app.include_router(events_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
+app.include_router(agents.router, prefix="/api")
 
 @app.get("/")
 def root():
