@@ -20,10 +20,12 @@ from datetime import datetime
 from app.models import get_db, Device, Event
 from app.utils.crypto import encrypt_password, decrypt_password
 
-# New router architecture imports
-from app.routers.factory import RouterFactory, get_connected_devices
-from app.routers.discovery import RouterDiscovery
-from app.routers.base import RouterException, RouterAuthError, RouterConnectionError
+# Router integration commented out - future enhancement when Vigil is embedded in router
+# See docs/ASUS_RESEARCH.md for details
+# from app.routers.factory import RouterFactory, get_connected_devices
+# from app.routers.discovery import RouterDiscovery
+# from app.routers.base import RouterException, RouterAuthError, RouterConnectionError
+from app.routers.implementations.generic import GenericRouter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["setup"])
@@ -193,64 +195,39 @@ def discover_routers():
 @router.post("/setup/connect", response_model=ConnectResponse)
 def connect_router(credentials: RouterCredentials, db: Session = Depends(get_db)):
     """
-    Connect to router with provided credentials and import devices.
+    Connect to network and discover devices via ARP scanning.
     
-    Uses the router factory to auto-detect vendor and use appropriate implementation.
-    Falls back to ARP scanning if router API fails.
+    Router API integration is a future enhancement - see docs/ASUS_RESEARCH.md
+    For now, uses ARP table scanning which doesn't require router credentials.
     """
     try:
-        logger.info(f"Attempting to connect to router at {credentials.ip}")
+        logger.info(f"Starting device discovery via ARP scanning")
         
-        # Use new factory to get devices
-        # This auto-detects vendor and tries appropriate implementation
-        devices_data = get_connected_devices(
-            router_ip=credentials.ip,
-            username=credentials.username,
-            password=credentials.password
-        )
+        # Use ARP-based discovery (no router credentials needed)
+        from app.routers.implementations.generic import GenericRouter
+        router_impl = GenericRouter(credentials.ip, credentials.username, credentials.password)
+        devices_data = router_impl.get_devices()
         
         if not devices_data:
             return ConnectResponse(
                 success=False,
                 devices_found=0,
-                message="Connected successfully but no devices found"
+                message="No devices found on network"
             )
-        
-        # Save encrypted credentials
-        save_router_credentials(
-            credentials.ip,
-            credentials.username,
-            credentials.password,
-            db
-        )
         
         # Import devices into database
         imported_count = import_devices_from_router(devices_data, db)
         
-        logger.info(f"Successfully imported {imported_count} devices from router")
+        logger.info(f"Successfully imported {imported_count} devices via ARP")
         
         return ConnectResponse(
             success=True,
             devices_found=imported_count,
-            message=f"Connected and imported {imported_count} devices"
+            message=f"Discovered and imported {imported_count} devices"
         )
         
-    except RouterAuthError as e:
-        logger.error(f"Authentication failed: {e}")
-        return ConnectResponse(
-            success=False,
-            devices_found=0,
-            message=f"Authentication failed: {str(e)}"
-        )
-    except RouterConnectionError as e:
-        logger.error(f"Connection failed: {e}")
-        return ConnectResponse(
-            success=False,
-            devices_found=0,
-            message=f"Connection failed: {str(e)}"
-        )
     except Exception as e:
-        logger.error(f"Unexpected error during connection: {e}")
+        logger.error(f"Error during device discovery: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return ConnectResponse(
