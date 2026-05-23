@@ -45,10 +45,27 @@ const Dashboard = () => {
   const [isSetupComplete, setIsSetupComplete] = useState(null);
   
   useEffect(() => {
-    fetch(`http://192.168.50.30:8005/api/setup/status`)
-      .then(res => res.json())
-      .then(data => setIsSetupComplete(data.is_setup_complete))
-      .catch(() => setIsSetupComplete(false));
+    const checkSetup = () => {
+      fetch(`${process.env.REACT_APP_API_URL || 'http://192.168.50.30:8005'}/api/setup/status`)
+        .then(res => res.json())
+        .then(data => setIsSetupComplete(data.is_setup_complete))
+        .catch(() => setIsSetupComplete(false));
+    };
+    
+    checkSetup();
+    
+    // Re-check when tab becomes visible (e.g., after setup completes)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkSetup();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
   
   if (isSetupComplete === false) {
