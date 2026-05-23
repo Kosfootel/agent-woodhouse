@@ -573,3 +573,71 @@ def get_blocked_stats(db: Session = Depends(get_db)):
         "total": total_blocked,
         "byCategory": by_category
     }
+
+
+@router.get("/tool-usage")
+def get_tool_usage(period: str = "24h", db: Session = Depends(get_db)):
+    """Get tool usage statistics."""
+    # Parse period
+    hours = 24
+    if period.endswith('h'):
+        hours = int(period[:-1])
+    elif period.endswith('d'):
+        hours = int(period[:-1]) * 24
+    
+    since = datetime.utcnow() - timedelta(hours=hours)
+    
+    # Get tool usage by hour
+    usages = db.query(
+        ToolInvocation.tool_name,
+        func.count(ToolInvocation.id).label("count")
+    ).filter(
+        ToolInvocation.timestamp >= since
+    ).group_by(ToolInvocation.tool_name).all()
+    
+    return {
+        "period": period,
+        "tools": [
+            {"name": name, "count": count}
+            for name, count in usages
+        ]
+    }
+
+
+@router.get("/memory-access")
+def get_memory_access_stats(db: Session = Depends(get_db)):
+    """Get memory access statistics for heatmap."""
+    # Get access patterns by agent and sensitivity
+    accesses = db.query(
+        MemoryAccess.agent_id,
+        MemoryAccess.sensitivity_level,
+        func.count(MemoryAccess.id).label("count")
+    ).group_by(
+        MemoryAccess.agent_id,
+        MemoryAccess.sensitivity_level
+    ).all()
+    
+    # Build heatmap data
+    agents = set()
+    levels = ["public", "internal", "confidential", "restricted"]
+    data = {}
+    
+    for agent_id, level, count in accesses:
+        agents.add(agent_id)
+        if agent_id not in data:
+            data[agent_id] = {}
+        data[agent_id][level] = count
+    
+    return {
+        "agents": list(agents),
+        "levels": levels,
+        "data": [
+            {
+                "agent": agent,
+                "level": level,
+                "count": data.get(agent, {}).get(level, 0)
+            }
+            for agent in agents
+            for level in levels
+        ]
+    }
