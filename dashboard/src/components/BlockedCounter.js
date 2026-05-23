@@ -8,6 +8,7 @@ const BlockedCounter = () => {
     byCategory: [],
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchStats();
@@ -16,68 +17,65 @@ const BlockedCounter = () => {
   const fetchStats = async () => {
     try {
       setLoading(true);
-      // Mock data if API not available
-      const mockData = {
-        total: 156,
-        byCategory: [
-          { category: 'File System', count: 45, color: '#dc2626' },
-          { category: 'Network', count: 38, color: '#ea580c' },
-          { category: 'Shell Exec', count: 32, color: '#ca8a04' },
-          { category: 'Memory', count: 25, color: '#16a34a' },
-          { category: 'Config', count: 16, color: '#2563eb' },
-        ],
-      };
-
-      try {
-        const response = await getBlockedStats();
-        setStats(response.data);
-      } catch (err) {
-        console.log('Using mock blocked stats');
-        setStats(mockData);
-      }
+      setError(null);
+      const response = await getBlockedStats();
+      setStats(response.data || { total: 0, byCategory: [] });
+    } catch (err) {
+      console.error('Failed to fetch blocked stats:', err);
+      setError(err.message);
+      setStats({ total: 0, byCategory: [] });
     } finally {
       setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="widget">
+        <h3>Blocked Prompts</h3>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="widget">
       <h3>Blocked Prompts</h3>
       
-      {loading ? (
-        <p>Loading...</p>
-      ) : (
-        <>
-          <div className="big-counter">
-            <div className="counter-value">{stats.total}</div>
-            <div className="counter-label">blocked today</div>
-          </div>
+      <div className="big-counter">
+        <div className="counter-value">{stats.total}</div>
+        <div className="counter-label">blocked today</div>
+      </div>
 
-          <div className="chart-container" style={{ height: 200 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.byCategory} margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey="category" 
-                  angle={-45} 
-                  textAnchor="end" 
-                  height={60}
-                  tick={{ fontSize: 11 }}
-                />
-                <YAxis />
-                <Tooltip 
-                  formatter={(value) => [value, 'Count']}
-                  labelFormatter={(label) => label}
-                />
-                <Bar 
-                  dataKey="count" 
-                  fill="#dc2626"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </>
+      {stats.byCategory.length > 0 ? (
+        <div className="chart-container" style={{ height: 200 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats.byCategory} margin={{ top: 10, right: 10, left: 0, bottom: 30 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="category" 
+                angle={-45} 
+                textAnchor="end" 
+                height={60}
+                tick={{ fontSize: 11 }}
+              />
+              <YAxis />
+              <Tooltip 
+                formatter={(value) => [value, 'Count']}
+                labelFormatter={(label) => label}
+              />
+              <Bar 
+                dataKey="count" 
+                fill="#dc2626"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <p style={{ textAlign: 'center', color: '#6b7280', marginTop: '20px' }}>
+          No blocked prompts yet
+        </p>
       )}
     </div>
   );
