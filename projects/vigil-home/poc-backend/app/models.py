@@ -1,8 +1,10 @@
 """Vigil Home - Database models"""
 
+import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, JSON, BLOB, ForeignKey, Boolean
+from typing import Optional, List
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -19,6 +21,9 @@ class Device(Base):
     classified_type = Column(String(64), nullable=True)
     classified_confidence = Column(Float, nullable=True)
     first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    discovery_method = Column(String(32), default="manual")
+    is_known = Column(Boolean, default=False)
+    nickname = Column(String(255), nullable=True)
     last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
@@ -194,3 +199,90 @@ class ApiKey(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
         }
+
+
+# ============================================================================
+# Credential Vault Models (Phase 1A)
+# ============================================================================
+
+class CredentialVault(Base):
+    """Encrypted credential storage for home automation services."""
+    __tablename__ = "credential_vault"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False, index=True)
+    service_type = Column(String(64), nullable=False, index=True)
+    credential_type = Column(String(32), nullable=False)
+    encrypted_data = Column(BLOB, nullable=False)
+    agent_scope = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=True)
+    last_rotated = Column(DateTime, nullable=True)
+    last_accessed = Column(DateTime, nullable=True)
+    access_count = Column(Integer, default=0)
+
+    def to_dict(self, include_encrypted: bool = False) -> dict:
+        """Convert to dictionary for API responses."""
+        result = {
+            "id": self.id,
+            "name": self.name,
+            "service_type": self.service_type,
+            "credential_type": self.credential_type,
+            "agent_scope": self._parse_agent_scope(),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "last_rotated": self.last_rotated.isoformat() if self.last_rotated else None,
+            "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
+            "access_count": self.access_count,
+        }
+        if include_encrypted:
+            result["encrypted_data"] = self.encrypted_data.hex() if self.encrypted_data else None
+        return result
+
+    def _parse_agent_scope(self) -> Optional[List[str]]:
+        """Parse comma-separated agent scope into list."""
+        if not self.agent_scope:
+            return None
+        return [a.strip() for a in self.agent_scope.split(",") if a.strip()]
+
+    def is_expired(self) -> bool:
+        """Check if credential has expired."""
+        if not self.expires_at:
+            return False
+        return datetime.now(timezone.utc) > self.expires_at
+
+    def is_expiring_soon(self, days: int = 7) -> bool:
+        """Check if credential expires within given days."""
+        if not self.expires_at:
+            return False
+        from datetime import timedelta
+        soon = datetime.now(timezone.utc) + timedelta(days=days)
+        return self.expires_at <= soon
+
+
+class CredentialAccessLog(Base):
+    """Audit log for all credential access operations."""
+    __tablename__ = "credential_access_log"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    credential_id = Column(String(36), ForeignKey("credential_vault.id"), nullable=False, index=True)
+    agent_id = Column(String(64), nullable=False, index=True)
+    action = Column(String(16), nullable=False, index=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    success = Column(Integer, nullable=False)  # 0 or 1 for SQLite compatibility
+    reason = Column(Text, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+
+    def to_dict(self, include_credential_name: bool = False) -> dict:
+        """Convert to dictionary for API responses."""
+        result = {
+            "id": self.id,
+            "credential_id": self.credential_id,
+            "agent_id": self.agent_id,
+            "action": self.action,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "success": bool(self.success),
+            "reason": self.reason,
+            "ip_address": self.ip_address,
+        }
+        return result

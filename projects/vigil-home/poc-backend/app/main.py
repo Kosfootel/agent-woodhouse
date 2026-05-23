@@ -65,7 +65,7 @@ configure_rate_limiting(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
+        "http://localhost:3000","http://192.168.50.30:8085",
         "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
@@ -1280,3 +1280,16 @@ async def production_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error"},
     )
+
+
+# ── Credential Vault Routes ────────────────────────────────────────
+
+from app.vault.vault_endpoints import vault_router
+
+app.include_router(vault_router)
+
+# ── Discovery Routes ────────────────────────────────────────
+
+from app.routers import discovery_router
+
+app.include_router(discovery_router, prefix="/api")

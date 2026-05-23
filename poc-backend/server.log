@@ -1,0 +1,108 @@
+INFO:     Started server process [3420726]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:44320 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50526 - "POST /api/devices/test-device-001/nickname HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50542 - "POST /api/devices/test-device-001/type HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56936 - "GET /api/devices/test-device-001/discovery-history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56942 - "GET /api/devices/test-device-001/ip-history HTTP/1.1" 200 OK
+INFO:     192.168.50.24:52843 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52844 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52845 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52845 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52844 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52843 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52846 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52846 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52843 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52843 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52843 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52843 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52881 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52882 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52883 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52883 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52883 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52917 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52918 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52918 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52918 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:52918 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53085 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53086 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53087 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53087 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53087 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53126 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53127 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53128 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53128 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53128 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53162 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53163 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53163 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53163 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53171 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53222 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53223 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53226 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53226 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53226 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53271 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53272 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53286 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53286 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53288 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53320 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53321 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53347 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53348 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53348 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53349 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53350 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53350 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53350 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53427 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53428 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53428 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53428 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53428 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53579 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53580 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53614 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53621 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53631 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53735 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53736 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53787 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53787 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53787 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53903 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53904 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53972 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53978 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:53987 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54071 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54072 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54317 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54317 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54333 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54425 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54426 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54597 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54606 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54617 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54666 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54667 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54801 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54807 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54817 - "OPTIONS /events HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54840 - "OPTIONS /devices HTTP/1.1" 404 Not Found
+INFO:     192.168.50.24:54841 - "OPTIONS /alerts HTTP/1.1" 404 Not Found
+INFO:     100.69.226.55:49764 - "GET /activity?t=1779505398997 HTTP/1.0" 404 Not Found
+INFO:     192.168.50.30:33570 - "GET /health HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [3420726]
