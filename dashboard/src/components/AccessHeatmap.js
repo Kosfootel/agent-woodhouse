@@ -11,6 +11,7 @@ const SENSITIVITY_COLORS = {
 const AccessHeatmap = () => {
   const [accessData, setAccessData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -19,88 +20,61 @@ const AccessHeatmap = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      // Mock data if API not available
-      const mockData = [
-        { agent: 'agent-1', file: 'MEMORY.md', sensitivity: 'critical', accesses: 24 },
-        { agent: 'agent-1', file: '.env', sensitivity: 'critical', accesses: 12 },
-        { agent: 'agent-2', file: 'config/secrets.yaml', sensitivity: 'critical', accesses: 8 },
-        { agent: 'agent-1', file: 'auth/tokens.json', sensitivity: 'high', accesses: 15 },
-        { agent: 'agent-3', file: 'logs/security.log', sensitivity: 'high', accesses: 32 },
-        { agent: 'agent-2', file: 'data/user_prefs.db', sensitivity: 'medium', accesses: 45 },
-        { agent: 'agent-1', file: 'cache/responses.tmp', sensitivity: 'low', accesses: 120 },
-        { agent: 'agent-3', file: 'docs/readme.md', sensitivity: 'low', accesses: 8 },
-        { agent: 'agent-2', file: 'settings.json', sensitivity: 'medium', accesses: 18 },
-        { agent: 'agent-1', file: 'api_keys.txt', sensitivity: 'critical', accesses: 3 },
-      ];
-
-      try {
-        const response = await getMemoryAccess();
-        setAccessData(response.data.access || mockData);
-      } catch (err) {
-        console.log('Using mock memory access data');
-        setAccessData(mockData);
-      }
+      setError(null);
+      const response = await getMemoryAccess();
+      setAccessData(response.data?.data || []);
+    } catch (err) {
+      console.error('Failed to fetch memory access:', err);
+      setError(err.message);
+      setAccessData([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const sortedData = [...accessData].sort((a, b) => {
-    const sensitivityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-    return sensitivityOrder[a.sensitivity] - sensitivityOrder[b.sensitivity];
-  });
+  // Filter to only show entries with count > 0
+  const filteredData = accessData.filter(item => item.count > 0);
+
+  if (loading) {
+    return (
+      <div className="widget">
+        <h3>Memory Access Heatmap</h3>
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="widget">
       <h3>Memory Access Heatmap</h3>
       
-      {loading ? (
-        <p>Loading...</p>
+      {filteredData.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px 0' }}>
+          <p>No memory access recorded yet</p>
+        </div>
       ) : (
-        <table className="heatmap-table">
+        <table className="heatmap-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr>
-              <th>Agent</th>
-              <th>File</th>
-              <th>Sensitivity</th>
-              <th>Accesses</th>
+            <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+              <th style={{ textAlign: 'left', padding: '8px' }}>Agent</th>
+              <th style={{ textAlign: 'left', padding: '8px' }}>Level</th>
+              <th style={{ textAlign: 'right', padding: '8px' }}>Accesses</th>
             </tr>
           </thead>
           <tbody>
-            {sortedData.map((row, index) => (
-              <tr key={index}>
-                <td>{row.agent}</td>
-                <td>{row.file}</td>
-                <td>
-                  <span
-                    className="sensitivity-badge"
-                    style={{
-                      backgroundColor: SENSITIVITY_COLORS[row.sensitivity],
-                      color: '#fff',
-                      padding: '4px 12px',
-                      borderRadius: '4px',
-                      fontSize: '0.8em',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {row.sensitivity}
+            {filteredData.map((item, idx) => (
+              <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                <td style={{ padding: '8px' }}>{item.agent}</td>
+                <td style={{ padding: '8px' }}>
+                  <span style={{ 
+                    color: SENSITIVITY_COLORS[item.level] || '#6b7280',
+                    fontWeight: 600,
+                    textTransform: 'capitalize'
+                  }}>
+                    {item.level}
                   </span>
                 </td>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div
-                      className="access-bar"
-                      style={{
-                        width: `${Math.min(row.accesses * 2, 100)}px`,
-                        height: '8px',
-                        backgroundColor: SENSITIVITY_COLORS[row.sensitivity],
-                        borderRadius: '4px',
-                        opacity: 0.8,
-                      }}
-                    />
-                    <span>{row.accesses}</span>
-                  </div>
-                </td>
+                <td style={{ padding: '8px', textAlign: 'right' }}>{item.count}</td>
               </tr>
             ))}
           </tbody>
