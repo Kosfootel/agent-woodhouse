@@ -1,3 +1,4 @@
+import os
 """Vigil Tier A - Backend Security Service
 FastAPI application for security scanning, logging, and anomaly detection.
 """
@@ -52,4 +53,5 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
