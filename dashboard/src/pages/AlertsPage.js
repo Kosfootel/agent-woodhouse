@@ -8,7 +8,7 @@ const AlertsPage = () => {
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const response = await fetch(`${'http://192.168.50.30:8005'}/api/alerts`);
+        const response = await fetch(`http://192.168.50.30:8005/api/alerts`);
         if (response.ok) {
           const data = await response.json();
           setAlerts(data.alerts || []);
@@ -28,7 +28,7 @@ const AlertsPage = () => {
   const acknowledgeAlert = async (alertId) => {
     try {
       const response = await fetch(
-        `${'http://192.168.50.30:8005'}/api/alerts/${alertId}/acknowledge`,
+        `http://192.168.50.30:8005/api/alerts/${alertId}/acknowledge`,
         { method: 'POST' }
       );
       if (response.ok) {
