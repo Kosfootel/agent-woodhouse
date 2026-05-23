@@ -4,6 +4,7 @@ FastAPI application for security scanning, logging, and anomaly detection.
 """
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.routers import security, devices, alerts, stats, setup, discovery
 from app.routers.events import router as events_router
 from app.routers.admin import router as admin_router
@@ -16,6 +17,15 @@ app = FastAPI(
     title="Vigil Security Service",
     description="Home agent security platform - Tier A MVP (Rule-based security)",
     version="0.1.0"
+)
+
+# Configure CORS - allow all origins for local network
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include routers with /api prefix
