@@ -500,3 +500,76 @@ def acknowledge_anomaly(anomaly_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"acknowledged": True}
+
+
+@router.get("/events")
+def get_security_events(
+    agent: str = None,
+    severity: str = None,
+    eventType: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get security events with optional filtering."""
+    query = db.query(SecurityEvent)
+    
+    if agent:
+        query = query.filter(SecurityEvent.agent_id == agent)
+    if severity:
+        query = query.filter(SecurityEvent.severity == severity)
+    if eventType:
+        query = query.filter(SecurityEvent.event_type == eventType)
+    
+    events = query.order_by(SecurityEvent.timestamp.desc()).all()
+    
+    return {
+        "events": [
+            {
+                "id": e.id,
+                "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+                "agent": e.agent_id,
+                "eventType": e.event_type,
+                "severity": e.severity,
+                "details": e.description,
+            }
+            for e in events
+        ]
+    }
+
+
+@router.get("/blocked-stats")
+def get_blocked_stats(db: Session = Depends(get_db)):
+    """Get statistics on blocked prompts/actions."""
+    # Count total blocked events
+    total_blocked = db.query(SecurityEvent).filter(
+        SecurityEvent.event_type.in_(["prompt_blocked", "tool_blocked", "memory_blocked"])
+    ).count()
+    
+    # Get breakdown by category (event_type)
+    categories = db.query(
+        SecurityEvent.event_type,
+        func.count(SecurityEvent.id).label("count")
+    ).filter(
+        SecurityEvent.event_type.in_(["prompt_blocked", "tool_blocked", "memory_blocked"])
+    ).group_by(SecurityEvent.event_type).all()
+    
+    category_map = {
+        "prompt_blocked": "Prompt",
+        "tool_blocked": "Tool",
+        "memory_blocked": "Memory",
+    }
+    
+    colors = ["#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#2563eb"]
+    
+    by_category = [
+        {
+            "category": category_map.get(cat, cat.replace("_", " ").title()),
+            "count": count,
+            "color": colors[i % len(colors)]
+        }
+        for i, (cat, count) in enumerate(categories)
+    ]
+    
+    return {
+        "total": total_blocked,
+        "byCategory": by_category
+    }
