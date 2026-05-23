@@ -265,15 +265,12 @@ def get_setup_status(db: Session = Depends(get_db)):
     """
     Get the current setup status.
     """
-    # Check if router is configured
-    router_config = db.query(Device).filter(Device.mac == "ROUTER_CONFIG").first()
-    router_connected = router_config is not None
-    
-    # Count devices
+    # Count real devices (exclude config markers)
     device_count = db.query(Device).filter(Device.mac != "ROUTER_CONFIG").count()
     
+    # Setup is complete if we have devices imported
     return SetupStatus(
-        is_setup_complete=router_connected and device_count > 0,
-        router_connected=router_connected,
+        is_setup_complete=device_count > 0,
+        router_connected=device_count > 0,
         device_count=device_count
     )
