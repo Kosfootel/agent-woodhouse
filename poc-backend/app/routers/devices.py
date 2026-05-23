@@ -139,17 +139,21 @@ def update_device(
         raise HTTPException(status_code=404, detail="Device not found")
     
     if request.nickname is not None:
+        old_nickname = device.nickname
         device.nickname = request.nickname
         # Create event for nickname change
         event = Event(
             device_id=device_id,
-            type="device_updated",
-            description=f"Device updated: nickname changed to '{request.nickname}'",
+            event_type="device_updated",
             severity="low",
-            acknowledged=True
+            details={
+                "description": f"Device nickname changed from '${old_nickname}' to '${request.nickname}'",
+                "old_nickname": old_nickname,
+                "new_nickname": request.nickname
+            }
         )
         db.add(event)
-    
+
     if request.hostname is not None:
         device.hostname = request.hostname
     
