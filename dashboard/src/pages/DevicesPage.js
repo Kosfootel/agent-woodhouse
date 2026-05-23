@@ -7,7 +7,7 @@ const DevicesPage = () => {
   useEffect(() => {
     const fetchDevices = async () => {
       try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8005'}/api/devices`);
+        const response = await fetch(`${'http://192.168.50.30:8005'}/api/devices`);
         if (response.ok) {
           const data = await response.json();
           setDevices(data.devices || []);
