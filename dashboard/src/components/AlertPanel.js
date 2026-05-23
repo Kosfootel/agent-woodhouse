@@ -11,6 +11,7 @@ const SEVERITY_ICONS = {
 const AlertPanel = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchAlerts();
@@ -19,44 +20,13 @@ const AlertPanel = () => {
   const fetchAlerts = async () => {
     try {
       setLoading(true);
-      // Mock data if API not available
-      const mockAlerts = [
-        { 
-          id: 1, 
-          severity: 'critical', 
-          title: 'Unusual file deletion pattern', 
-          description: 'Agent attempting multiple file deletions in rapid succession',
-          agent: 'agent-1',
-          timestamp: '2026-05-19T14:30:00Z',
-          acknowledged: false,
-        },
-        { 
-          id: 2, 
-          severity: 'high', 
-          title: 'Memory access anomaly', 
-          description: 'Agent accessing critical files outside normal hours',
-          agent: 'agent-2',
-          timestamp: '2026-05-19T12:15:00Z',
-          acknowledged: false,
-        },
-        { 
-          id: 3, 
-          severity: 'medium', 
-          title: 'Elevated tool usage', 
-          description: 'Tool invocation rate 3x above baseline',
-          agent: 'agent-3',
-          timestamp: '2026-05-19T10:45:00Z',
-          acknowledged: false,
-        },
-      ];
-
-      try {
-        const response = await getAnomalies();
-        setAlerts(response.data.anomalies || mockAlerts);
-      } catch (err) {
-        console.log('Using mock alert data');
-        setAlerts(mockAlerts);
-      }
+      setError(null);
+      const response = await getAnomalies();
+      setAlerts(response.data?.anomalies || []);
+    } catch (err) {
+      console.error('Failed to fetch alerts:', err);
+      setError(err.message);
+      setAlerts([]);
     } finally {
       setLoading(false);
     }
@@ -65,71 +35,86 @@ const AlertPanel = () => {
   const handleAcknowledge = async (id) => {
     try {
       await acknowledgeAnomaly(id);
-      setAlerts(alerts.map(alert => 
-        alert.id === id ? { ...alert, acknowledged: true } : alert
-      ));
+      setAlerts(alerts.filter(a => a.id !== id));
     } catch (err) {
-      // Just mark as acknowledged locally if API fails
-      setAlerts(alerts.map(alert => 
-        alert.id === id ? { ...alert, acknowledged: true } : alert
-      ));
+      console.error('Failed to acknowledge alert:', err);
     }
   };
 
-  const activeAlerts = alerts.filter(a => !a.acknowledged);
-
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
-    return date.toLocaleString([], { 
-      month: 'short', 
-      day: 'numeric', 
+    return date.toLocaleTimeString('en-US', { 
       hour: '2-digit', 
-      minute: '2-digit' 
+      minute: '2-digit',
+      hour12: false 
     });
   };
 
+  if (loading) {
+    return (
+      <div className="widget">
+        <h3>Alerts</h3>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="widget">
-      <div className="widget-header">
-        <h3>Anomaly Alerts</h3>
-        <span className="alert-badge">
-          {activeAlerts.length} active
-        </span>
-      </div>
+      <h3>Alerts</h3>
       
-      {loading ? (
-        <p>Loading...</p>
+      {alerts.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px 0' }}>
+          <p>🎉 No active alerts</p>
+          <p style={{ fontSize: '0.85em', marginTop: '8px' }}>
+            System is operating normally
+          </p>
+        </div>
       ) : (
-        <div className="alerts-list">
-          {activeAlerts.length === 0 ? (
-            <div className="no-alerts">
-              <span>✅ No active alerts</span>
-            </div>
-          ) : (
-            activeAlerts.map(alert => (
-              <div 
-                key={alert.id} 
-                className={`alert-item alert-${alert.severity}`}
-              >
-                <div className="alert-header">
-                  <span className="alert-icon">{SEVERITY_ICONS[alert.severity]}</span>
-                  <span className="alert-title">{alert.title}</span>
+        <div className="alerts-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {alerts.map((alert) => (
+            <div 
+              key={alert.id}
+              className="alert-item"
+              style={{
+                padding: '12px',
+                marginBottom: '8px',
+                borderRadius: '6px',
+                backgroundColor: '#f9fafb',
+                borderLeft: `4px solid ${alert.severity === 'critical' ? '#dc2626' : 
+                  alert.severity === 'high' ? '#ea580c' : 
+                  alert.severity === 'medium' ? '#ca8a04' : '#16a34a'}`
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <span style={{ marginRight: '8px' }}>{SEVERITY_ICONS[alert.severity]}</span>
+                  <strong>{alert.title || alert.event_type}</strong>
                 </div>
-                <div className="alert-meta">
-                  <span>{alert.agent}</span>
-                  <span>•</span>
-                  <span>{formatTime(alert.timestamp)}</span>
-                </div>
-                <p className="alert-description">{alert.description}</p>
-                <button 
-                  className="ack-button"
+                <button
                   onClick={() => handleAcknowledge(alert.id)}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '0.8em',
+                    backgroundColor: '#e5e7eb',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
                 >
-                  Acknowledge
+                  Ack
                 </button>
               </div>
-            ))
-          )}
+              
+              <p style={{ margin: '8px 0', fontSize: '0.9em', color: '#4b5563' }}>
+                {alert.description}
+              </p>
+              
+              <div style={{ fontSize: '0.75em', color: '#9ca3af' }}>
+                {formatTime(alert.timestamp)} • {alert.agent_id || alert.agent}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
