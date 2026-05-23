@@ -1,0 +1,510 @@
+/** Setup Wizard Styles */
+
+.setup-wizard {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #0f172a;
+}
+
+/* Header */
+.wizard-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.wizard-header h1 {
+  font-size: 1.75rem;
+  color: #fff;
+  margin: 0;
+}
+
+/* Step Indicator */
+.step-indicator {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding: 1rem 0;
+}
+
+.step-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #334155;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.3s ease;
+  border: 2px solid #475569;
+}
+
+.step-dot.active {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.step-dot.completed {
+  background-color: #22c55e;
+  border-color: #22c55e;
+  color: #fff;
+}
+
+/* Wizard Content */
+.wizard-content {
+  flex: 1;
+  background-color: #1e293b;
+  border-radius: 12px;
+  padding: 2rem;
+  border: 1px solid #334155;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+/* Step Content Base */
+.step-content {
+  text-align: center;
+}
+
+.step-content h2 {
+  font-size: 1.5rem;
+  color: #fff;
+  margin-bottom: 1rem;
+}
+
+.step-content p {
+  color: #94a3b8;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+/* Welcome Step */
+.welcome-step .step-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+  text-align: left;
+}
+
+.feature-list li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #334155;
+  color: #e2e8f0;
+  font-size: 1rem;
+}
+
+.feature-list li:last-child {
+  border-bottom: none;
+}
+
+/* Discovery Step */
+.router-found {
+  background-color: #0f172a;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+.router-found strong {
+  color: #3b82f6;
+}
+
+/* Progress Bar */
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: #334155;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.loading-text {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+/* Loading Container */
+.loading-container {
+  padding: 2rem 0;
+}
+
+.test-status p {
+  margin: 0.5rem 0;
+  color: #94a3b8;
+  opacity: 0;
+  animation: fadeInUp 0.5s forwards;
+}
+
+.test-status p:nth-child(1) { animation-delay: 0.5s; }
+.test-status p:nth-child(2) { animation-delay: 1s; }
+.test-status p:nth-child(3) { animation-delay: 1.5s; }
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Success Message */
+.success-message {
+  padding: 2rem 0;
+}
+
+.success-icon {
+  width: 48px;
+  height: 48px;
+  background-color: #22c55e;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.success-icon.large {
+  width: 64px;
+  height: 64px;
+  font-size: 2rem;
+}
+
+.success-message h3 {
+  color: #fff;
+  margin-bottom: 0.5rem;
+}
+
+.success-message p {
+  color: #22c55e;
+  margin: 0;
+}
+
+/* Error Message */
+.error-message {
+  background-color: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.error-message.small {
+  padding: 0.75rem;
+  margin: 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.error-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.error-message p {
+  color: #fca5a5;
+  margin: 0 0 1rem 0;
+}
+
+/* Credentials Step */
+.credentials-step .router-found {
+  margin-bottom: 1.5rem;
+}
+
+.help-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: #0f172a;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  color: #94a3b8;
+}
+
+.help-icon {
+  font-size: 1.1rem;
+}
+
+/* Form Styles */
+.credentials-form {
+  text-align: left;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  color: #e2e8f0;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background-color: #0f172a;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.form-group input::placeholder {
+  color: #64748b;
+}
+
+.form-group input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Device Summary */
+.device-summary {
+  background-color: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 1.5rem 0;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background-color: #334155;
+  color: #fff;
+  font-weight: 500;
+}
+
+.router-info {
+  color: #60a5fa;
+}
+
+.device-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.device-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #334155;
+}
+
+.device-item:last-child {
+  border-bottom: none;
+}
+
+.device-item.more {
+  justify-content: center;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.device-icon {
+  font-size: 1.25rem;
+  width: 24px;
+  text-align: center;
+}
+
+.device-name {
+  flex: 1;
+  color: #e2e8f0;
+  text-align: left;
+}
+
+.device-ip {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+/* Confirmation Actions */
+.confirmation-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #3b82f6;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #2563eb;
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background-color: #334155;
+  color: #e2e8f0;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #475569;
+}
+
+.btn-success {
+  background-color: #22c55e;
+  color: #fff;
+}
+
+.btn-success:hover:not(:disabled) {
+  background-color: #16a34a;
+}
+
+.btn-text {
+  background: transparent;
+  color: #94a3b8;
+  padding: 0.5rem 1rem;
+}
+
+.btn-text:hover:not(:disabled) {
+  color: #e2e8f0;
+}
+
+/* Spinner */
+.spinner {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.spinner.small {
+  width: 16px;
+  height: 16px;
+}
+
+.spinner.large {
+  width: 48px;
+  height: 48px;
+  border-width: 3px;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Wizard Footer */
+.wizard-footer {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+/* Scrollbar for device list */
+.device-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.device-list::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+.device-list::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+.device-list::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .setup-wizard {
+    padding: 1rem;
+    min-height: auto;
+  }
+  
+  .wizard-content {
+    padding: 1.5rem;
+  }
+  
+  .step-indicator {
+    gap: 0.75rem;
+  }
+  
+  .step-dot {
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+  
+  .step-content h2 {
+    font-size: 1.25rem;
+  }
+  
+  .confirmation-actions {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+  }
+}
