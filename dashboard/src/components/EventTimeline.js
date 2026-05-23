@@ -11,6 +11,7 @@ const SEVERITY_COLORS = {
 const EventTimeline = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     agent: '',
     severity: '',
@@ -24,34 +25,13 @@ const EventTimeline = () => {
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      // Fallback mock data if API not available
-      const mockEvents = [
-        { id: 1, timestamp: '2026-05-19T14:30:00Z', agent: 'agent-1', eventType: 'prompt_blocked', severity: 'high', details: 'Attempted file deletion' },
-        { id: 2, timestamp: '2026-05-19T14:15:00Z', agent: 'agent-2', eventType: 'memory_access', severity: 'medium', details: 'Accessed sensitive config' },
-        { id: 3, timestamp: '2026-05-19T13:45:00Z', agent: 'agent-1', eventType: 'tool_blocked', severity: 'critical', details: 'Blocked shell execution' },
-        { id: 4, timestamp: '2026-05-19T13:20:00Z', agent: 'agent-3', eventType: 'anomaly_detected', severity: 'high', details: 'Unusual file access pattern' },
-        { id: 5, timestamp: '2026-05-19T12:55:00Z', agent: 'agent-1', eventType: 'prompt_blocked', severity: 'low', details: 'Attempted network scan' },
-      ];
-      
-      // Try API first, fall back to mock
-      try {
-        const response = await getSecurityEvents(filters);
-        setEvents(response.data.events || mockEvents);
-      } catch (err) {
-        console.log('Using mock data');
-        // Apply filters to mock data
-        let filtered = mockEvents;
-        if (filters.severity) {
-          filtered = filtered.filter(e => e.severity === filters.severity);
-        }
-        if (filters.agent) {
-          filtered = filtered.filter(e => e.agent === filters.agent);
-        }
-        if (filters.eventType) {
-          filtered = filtered.filter(e => e.eventType === filters.eventType);
-        }
-        setEvents(filtered);
-      }
+      setError(null);
+      const response = await getSecurityEvents(filters);
+      setEvents(response.data?.events || []);
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+      setError(err.message);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -59,90 +39,91 @@ const EventTimeline = () => {
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
   };
 
-  const uniqueAgents = [...new Set(events.map(e => e.agent))];
-  const uniqueEventTypes = [...new Set(events.map(e => e.eventType))];
+  const formatDate = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+  const getSeverityIcon = (severity) => {
+    const icons = {
+      critical: '🔴',
+      high: '🟠',
+      medium: '🟡',
+      low: '🟢',
+    };
+    return icons[severity] || '⚪';
+  };
+
+  if (loading) {
+    return (
+      <div className="widget">
+        <h3>Security Event Timeline</h3>
+        <p>Loading events...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="widget">
       <h3>Security Event Timeline</h3>
       
-      <div className="filters">
-        <select 
-          value={filters.agent} 
-          onChange={(e) => setFilters({...filters, agent: e.target.value})}
-        >
-          <option value="">All Agents</option>
-          {uniqueAgents.map(agent => (
-            <option key={agent} value={agent}>{agent}</option>
+      {events.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#6b7280', padding: '40px 0' }}>
+          <p>No security events recorded yet</p>
+        </div>
+      ) : (
+        <div className="timeline" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {events.map((event) => (
+            <div 
+              key={event.id}
+              className="timeline-item"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                padding: '12px 0',
+                borderBottom: '1px solid #e5e7eb',
+              }}
+            >
+              <div style={{ marginRight: '12px', fontSize: '1.2em' }}>
+                {getSeverityIcon(event.severity)}
+              </div>
+              
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                    {event.eventType?.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ fontSize: '0.85em', color: '#6b7280' }}>
+                    {formatDate(event.timestamp)} {formatTime(event.timestamp)}
+                  </span>
+                </div>
+                
+                <div style={{ 
+                  fontSize: '0.9em', 
+                  color: '#374151',
+                  marginTop: '4px' 
+                }}>
+                  {event.details}
+                </div>
+                
+                <div style={{ fontSize: '0.8em', color: '#9ca3af', marginTop: '4px' }}>
+                  Agent: {event.agent}
+                </div>
+              </div>
+            </div>
           ))}
-        </select>
-        
-        <select 
-          value={filters.severity} 
-          onChange={(e) => setFilters({...filters, severity: e.target.value})}
-        >
-          <option value="">All Severities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-        
-        <select 
-          value={filters.eventType} 
-          onChange={(e) => setFilters({...filters, eventType: e.target.value})}
-        >
-          <option value="">All Event Types</option>
-          {uniqueEventTypes.map(type => (
-            <option key={type} value={type}>{type.replace('_', ' ')}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="timeline-container">
-        {loading ? (
-          <p>Loading...</p>
-        ) : (
-          <table className="timeline-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Agent</th>
-                <th>Event Type</th>
-                <th>Severity</th>
-                <th>Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {events.map(event => (
-                <tr key={event.id}>
-                  <td>{formatTime(event.timestamp)}</td>
-                  <td>{event.agent}</td>
-                  <td>{event.eventType.replace('_', ' ')}</td>
-                  <td>
-                    <span 
-                      className="severity-badge" 
-                      style={{ 
-                        backgroundColor: SEVERITY_COLORS[event.severity],
-                        color: '#fff',
-                        padding: '2px 8px',
-                        borderRadius: '4px',
-                        fontSize: '0.8em'
-                      }}
-                    >
-                      {event.severity}
-                    </span>
-                  </td>
-                  <td>{event.details}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
