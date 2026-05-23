@@ -1,249 +1,265 @@
-"""Devices API router for Vigil."""
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-import sqlite3
+"""
+Vigil - Device Management Router
+Endpoints for managing network devices.
+"""
+
 from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+import ipaddress
 
-router = APIRouter(prefix="/api/devices", tags=["devices"])
+from app.models import get_db, Device, Event
 
-# Database path
-DB_PATH = "/home/erik-ross/projects/vigil-home/vigil.db"
+router = APIRouter(prefix="/devices", tags=["devices"])
 
+
+def is_docker_or_internal_ip(ip: str) -> bool:
+    """Check if IP is a Docker/internal network IP that should be excluded from display."""
+    try:
+        addr = ipaddress.ip_address(ip)
+        # Exclude Docker networks
+        docker_networks = [
+            ipaddress.ip_network('172.17.0.0/16'),   # Docker default bridge
+            ipaddress.ip_network('172.18.0.0/16'),   # Docker custom bridge
+            ipaddress.ip_network('172.19.0.0/16'),   # Docker custom bridge
+            ipaddress.ip_network('172.20.0.0/14'),   # Docker large range
+            ipaddress.ip_network('172.24.0.0/14'),   # Docker large range
+            ipaddress.ip_network('172.28.0.0/14'),   # Docker large range
+            ipaddress.ip_network('10.0.0.0/8'),      # Large private range (often container)
+            ipaddress.ip_network('127.0.0.0/8'),     # Loopback
+        ]
+        for network in docker_networks:
+            if addr in network:
+                return True
+        return False
+    except ValueError:
+        return True  # Invalid IP, filter it out
+
+
+# ============ Pydantic Models ============
 
 class DeviceResponse(BaseModel):
     id: int
     mac: str
-    ip: Optional[str] = None
-    hostname: Optional[str] = None
-    device_type: Optional[str] = None
-    vendor: Optional[str] = None
-    trust_score: float = 50.0
-    status: str = "active"
-    first_seen: Optional[str] = None
-    last_seen: Optional[str] = None
-    nickname: Optional[str] = None
-    online: bool = True
+    ip: str
+    hostname: Optional[str]
+    nickname: Optional[str]
+    vendor: Optional[str]
+    device_type: Optional[str]
+    trust_score: float
+    containment_status: str
+    online: bool
+    last_seen: datetime
+    first_seen: datetime
+
+    class Config:
+        from_attributes = True
 
 
-class DevicesListResponse(BaseModel):
-    count: int
+class DeviceListResponse(BaseModel):
     devices: List[DeviceResponse]
+    total_count: int
+
+
+class BlockResponse(BaseModel):
+    success: bool
+    message: str
 
 
 class DeviceUpdateRequest(BaseModel):
     nickname: Optional[str] = None
+    hostname: Optional[str] = None
     device_type: Optional[str] = None
 
 
-class BlockRequest(BaseModel):
-    pass
+class DeviceUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    device: Optional[DeviceResponse] = None
 
 
-def get_db_connection():
-    """Get a database connection with row factory."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# ============ Endpoints ============
 
-
-@router.get("/", response_model=DevicesListResponse)
-async def get_devices(
-    limit: int = 100,
-    offset: int = 0,
+@router.get("", response_model=DeviceListResponse)
+def list_devices(
     status: Optional[str] = None,
-    device_type: Optional[str] = None
+    search: Optional[str] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
 ):
-    """Get all devices with optional filtering."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        query = """
-            SELECT 
-                id,
-                mac,
-                ip,
-                hostname,
-                device_type,
-                vendor,
-                trust_score,
-                status,
-                first_seen,
-                last_seen,
-                nickname
-            FROM devices
-            WHERE 1=1
-        """
-        params = []
-
-        if status:
-            query += " AND status = ?"
-            params.append(status)
-
-        if device_type:
-            query += " AND device_type = ?"
-            params.append(device_type)
-
-        query += " ORDER BY last_seen DESC LIMIT ? OFFSET ?"
-        params.extend([limit, offset])
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        # Calculate online status based on last_seen
-        now = datetime.now()
-        devices = []
-        for row in rows:
-            last_seen = None
-            if row["last_seen"]:
-                try:
-                    last_seen = datetime.fromisoformat(row["last_seen"].replace('Z', '+00:00'))
-                except:
-                    pass
-            
-            # Device is online if seen in last 5 minutes
-            online = False
-            if last_seen:
-                diff = (now - last_seen.replace(tzinfo=None)).total_seconds()
-                online = diff < 300  # 5 minutes
-
-            devices.append(DeviceResponse(
-                id=row["id"],
-                mac=row["mac"],
-                ip=row["ip"],
-                hostname=row["hostname"],
-                device_type=row["device_type"] or "unknown",
-                vendor=row["vendor"],
-                trust_score=row["trust_score"] or 50.0,
-                status=row["status"] or "active",
-                first_seen=row["first_seen"],
-                last_seen=row["last_seen"],
-                nickname=row["nickname"],
-                online=online
-            ))
-
-        conn.close()
-
-        return DevicesListResponse(count=len(devices), devices=devices)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    """List all devices with optional filtering."""
+    query = db.query(Device)
+    
+    if status:
+        query = query.filter(Device.containment_status == status)
+    
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            (Device.mac.ilike(search_filter)) |
+            (Device.ip.ilike(search_filter)) |
+            (Device.hostname.ilike(search_filter)) |
+            (Device.nickname.ilike(search_filter))
+        )
+    
+    devices = query.order_by(Device.last_seen.desc()).limit(limit).all()
+    
+    # Filter out Docker/internal IPs
+    devices = [d for d in devices if not is_docker_or_internal_ip(d.ip)]
+    
+    total_count = len(devices)
+    
+    return DeviceListResponse(
+        devices=devices,
+        total_count=total_count
+    )
 
 
 @router.get("/{device_id}", response_model=DeviceResponse)
-async def get_device(device_id: int):
+def get_device(device_id: int, db: Session = Depends(get_db)):
     """Get a specific device by ID."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
 
-        cursor.execute("""
-            SELECT 
-                id,
-                mac,
-                ip,
-                hostname,
-                device_type,
-                vendor,
-                trust_score,
-                status,
-                first_seen,
-                last_seen,
-                nickname
-            FROM devices
-            WHERE id = ?
-        """, (device_id,))
 
-        row = cursor.fetchone()
-        conn.close()
-
-        if not row:
-            raise HTTPException(status_code=404, detail="Device not found")
-
-        # Calculate online status
-        now = datetime.now()
-        online = False
-        if row["last_seen"]:
-            try:
-                last_seen = datetime.fromisoformat(row["last_seen"].replace('Z', '+00:00'))
-                diff = (now - last_seen.replace(tzinfo=None)).total_seconds()
-                online = diff < 300
-            except:
-                pass
-
-        return DeviceResponse(
-            id=row["id"],
-            mac=row["mac"],
-            ip=row["ip"],
-            hostname=row["hostname"],
-            device_type=row["device_type"] or "unknown",
-            vendor=row["vendor"],
-            trust_score=row["trust_score"] or 50.0,
-            status=row["status"] or "active",
-            first_seen=row["first_seen"],
-            last_seen=row["last_seen"],
-            nickname=row["nickname"],
-            online=online
+@router.patch("/{device_id}")
+def update_device(
+    device_id: int,
+    request: DeviceUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """Update device nickname, hostname, or device type."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    if request.nickname is not None:
+        device.nickname = request.nickname
+        # Create event for nickname change
+        event = Event(
+            device_id=device_id,
+            type="device_updated",
+            description=f"Device updated: nickname changed to '{request.nickname}'",
+            severity="low",
+            acknowledged=True
         )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        db.add(event)
+    
+    if request.hostname is not None:
+        device.hostname = request.hostname
+    
+    if request.device_type is not None:
+        device.device_type = request.device_type
+    
+    db.commit()
+    db.refresh(device)
+    
+    return DeviceUpdateResponse(
+        success=True,
+        message="Device updated successfully",
+        device=device
+    )
 
 
 @router.post("/{device_id}/block")
-async def block_device(device_id: int):
-    """Block a device."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            UPDATE devices
-            SET status = 'blocked'
-            WHERE id = ?
-        """, (device_id,))
-
-        if cursor.rowcount == 0:
-            conn.close()
-            raise HTTPException(status_code=404, detail="Device not found")
-
-        conn.commit()
-        conn.close()
-
-        return {"success": True, "message": "Device blocked"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+def block_device(device_id: int, db: Session = Depends(get_db)):
+    """Block a device from accessing the network."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # Cannot block trusted devices
+    if device.containment_status == "trusted":
+        return BlockResponse(
+            success=False,
+            message="Cannot block trusted devices. Please mark as untrusted first."
+        )
+    
+    device.containment_status = "blocked"
+    db.commit()
+    
+    # Create alert for blocking
+    event = Event(
+        device_id=device_id,
+        type="device_blocked",
+        description=f"Device {device.hostname or device.mac} has been blocked",
+        severity="medium",
+        acknowledged=False
+    )
+    db.add(event)
+    db.commit()
+    
+    return BlockResponse(
+        success=True,
+        message=f"Device {device.hostname or device.mac} has been blocked"
+    )
 
 
 @router.post("/{device_id}/unblock")
-async def unblock_device(device_id: int):
-    """Unblock a device."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+def unblock_device(device_id: int, db: Session = Depends(get_db)):
+    """Unblock a previously blocked device."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.containment_status = "allowed"
+    db.commit()
+    
+    return BlockResponse(
+        success=True,
+        message=f"Device {device.hostname or device.mac} has been unblocked"
+    )
 
-        cursor.execute("""
-            UPDATE devices
-            SET status = 'active'
-            WHERE id = ?
-        """, (device_id,))
 
-        if cursor.rowcount == 0:
-            conn.close()
-            raise HTTPException(status_code=404, detail="Device not found")
+@router.post("/{device_id}/trust")
+def trust_device(device_id: int, db: Session = Depends(get_db)):
+    """Mark a device as trusted (baseline)."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.containment_status = "trusted"
+    device.is_known = True
+    device.trust_score = 1.0
+    db.commit()
+    
+    # Create event for trust
+    event = Event(
+        device_id=device_id,
+        type="device_trusted",
+        description=f"Device {device.hostname or device.nickname or device.mac} marked as trusted",
+        severity="low",
+        acknowledged=True
+    )
+    db.add(event)
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Device {device.hostname or device.nickname or device.mac} marked as trusted",
+        "device_id": device_id
+    }
 
-        conn.commit()
-        conn.close()
 
-        return {"success": True, "message": "Device unblocked"}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+@router.post("/{device_id}/untrust")
+def untrust_device(device_id: int, db: Session = Depends(get_db)):
+    """Remove trust status from a device."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.containment_status = "allowed"
+    device.is_known = False
+    device.trust_score = 0.5
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Device {device.hostname or device.nickname or device.mac} trust status removed",
+        "device_id": device_id
+    }
