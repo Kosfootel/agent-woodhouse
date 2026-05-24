@@ -30,9 +30,8 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile
     container_name: vigil-dashboard
+    network_mode: host
     hostname: dashboard
-    ports:
-      - 8085:8085
     depends_on:
       - backend
     restart: unless-stopped
