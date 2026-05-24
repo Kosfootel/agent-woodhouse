@@ -4,14 +4,18 @@ const AlertsPage = () => {
   const [alerts, setAlerts] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [newCount, setNewCount] = useState(0);
+
+  const API_URL = 'http://192.168.50.30:8000';
 
   useEffect(() => {
     const fetchAlerts = async () => {
       try {
-        const response = await fetch(`http://192.168.50.30:8000/api/alerts`);
+        const response = await fetch(`${API_URL}/api/alerts`);
         if (response.ok) {
           const data = await response.json();
           setAlerts(data.alerts || []);
+          setNewCount(data.new_count || 0);
         }
       } catch (error) {
         console.error('Failed to fetch alerts:', error);
@@ -23,19 +27,40 @@ const AlertsPage = () => {
     fetchAlerts();
     const interval = setInterval(fetchAlerts, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [API_URL]);
 
   const acknowledgeAlert = async (alertId) => {
     try {
       const response = await fetch(
-        `http://192.168.50.30:8000/api/alerts/${alertId}/acknowledge`,
+        `${API_URL}/api/alerts/${alertId}/acknowledge`,
         { method: 'POST' }
       );
       if (response.ok) {
         setAlerts(alerts.map(a => a.id === alertId ? { ...a, acknowledged: true } : a));
+        setNewCount(prev => Math.max(0, prev - 1));
       }
     } catch (error) {
       console.error('Failed to acknowledge alert:', error);
+    }
+  };
+
+  const acknowledgeAll = async () => {
+    if (!window.confirm(`Acknowledge all ${newCount} unacknowledged alerts?`)) {
+      return;
+    }
+    try {
+      const response = await fetch(
+        `${API_URL}/api/alerts/acknowledge-all`,
+        { method: 'POST' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setAlerts(alerts.map(a => ({ ...a, acknowledged: true })));
+        setNewCount(0);
+        alert(`Acknowledged ${data.count} alerts`);
+      }
+    } catch (error) {
+      console.error('Failed to acknowledge all alerts:', error);
     }
   };
 
@@ -58,9 +83,19 @@ const AlertsPage = () => {
     <div className="widget">
       <div className="widget-header">
         <h3>🔔 Security Alerts</h3>
-        {unacknowledgedCount > 0 && (
-          <span className="alert-badge">{unacknowledgedCount} New</span>
-        )}
+        <div className="header-actions">
+          {unacknowledgedCount > 0 && (
+            <button 
+              className="ack-all-btn"
+              onClick={acknowledgeAll}
+            >
+              Acknowledge All ({unacknowledgedCount})
+            </button>
+          )}
+          {unacknowledgedCount > 0 && (
+            <span className="alert-badge">{unacknowledgedCount} New</span>
+          )}
+        </div>
       </div>
 
       <div className="filters">
@@ -94,7 +129,7 @@ const AlertsPage = () => {
                 <span>{new Date(alert.timestamp || Date.now()).toLocaleString()}</span>
               </div>
               <div className="alert-description">
-                {alert.description || 'No description available'}
+                {alert.description || alert.narrative || 'No description available'}
               </div>
               {!alert.acknowledged && (
                 <button 

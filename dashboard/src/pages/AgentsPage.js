@@ -37,7 +37,8 @@ const AgentsPage = () => {
         headers: { 'Content-Type': 'application/json' }
       });
       if (response.ok) {
-        setAgents(agents.map(a => a.id === agentId ? { ...a, trust_level: 'trusted' } : a));
+        const data = await response.json();
+        setAgents(agents.map(a => a.id === agentId ? { ...a, trust_level: data.trust_level, is_trusted: data.is_trusted } : a));
       }
     } catch (error) {
       console.error('Failed to trust agent:', error);
@@ -54,29 +55,11 @@ const AgentsPage = () => {
         headers: { 'Content-Type': 'application/json' }
       });
       if (response.ok) {
-        setAgents(agents.map(a => a.id === agentId ? { ...a, trust_level: 'blocked' } : a));
+        const data = await response.json();
+        setAgents(agents.map(a => a.id === agentId ? { ...a, trust_level: data.trust_level, is_blocked: data.is_blocked } : a));
       }
     } catch (error) {
       console.error('Failed to block agent:', error);
-    } finally {
-      setActionInProgress(null);
-    }
-  };
-
-  const removeAgent = async (agentId) => {
-    if (!window.confirm(`Are you sure you want to remove agent ${agentId}? This action cannot be undone.`)) {
-      return;
-    }
-    setActionInProgress(agentId);
-    try {
-      const response = await fetch(`${API_URL}/api/agents/${agentId}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        setAgents(agents.filter(a => a.id !== agentId));
-      }
-    } catch (error) {
-      console.error('Failed to remove agent:', error);
     } finally {
       setActionInProgress(null);
     }
@@ -208,30 +191,21 @@ const AgentsPage = () => {
                   <td>{agent.last_seen ? new Date(agent.last_seen).toLocaleString() : 'Never'}</td>
                   <td>
                     <div className="action-buttons">
-                      {agent.trust_level !== 'trusted' && (
-                        <button 
-                          className="btn-trust"
-                          onClick={() => trustAgent(agent.id)}
-                          disabled={actionInProgress === agent.id}
-                        >
-                          {actionInProgress === agent.id ? '...' : 'Trust'}
-                        </button>
-                      )}
-                      {agent.trust_level !== 'blocked' && (
-                        <button 
-                          className="btn-block"
-                          onClick={() => blockAgent(agent.id)}
-                          disabled={actionInProgress === agent.id}
-                        >
-                          {actionInProgress === agent.id ? '...' : 'Block'}
-                        </button>
-                      )}
+                      {/* Trust Toggle Button */}
                       <button 
-                        className="btn-remove"
-                        onClick={() => removeAgent(agent.id)}
+                        className={`btn-trust ${agent.trust_level === 'trusted' ? 'active' : ''}`}
+                        onClick={() => trustAgent(agent.id)}
                         disabled={actionInProgress === agent.id}
                       >
-                        {actionInProgress === agent.id ? '...' : 'Remove'}
+                        {actionInProgress === agent.id ? '...' : (agent.trust_level === 'trusted' ? '✓ Trusted' : 'Trust')}
+                      </button>
+                      {/* Block Toggle Button */}
+                      <button 
+                        className={`btn-block ${agent.trust_level === 'blocked' ? 'active' : ''}`}
+                        onClick={() => blockAgent(agent.id)}
+                        disabled={actionInProgress === agent.id}
+                      >
+                        {actionInProgress === agent.id ? '...' : (agent.trust_level === 'blocked' ? '🚫 Blocked' : 'Block')}
                       </button>
                     </div>
                   </td>
