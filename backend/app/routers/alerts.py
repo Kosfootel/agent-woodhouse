@@ -38,22 +38,28 @@ async def get_alerts(
     """Get alerts/events with optional filtering."""
     query = db.query(Event)
     
-    if severity:
-        query = query.filter(Event.severity == severity)
+    # Severity mapping from event types
+    severity_map = {
+        'device_blocked': 'critical',
+        'alert_triggered': 'high',
+        'device_left': 'medium',
+        'device_joined': 'low',
+    }
     
-    events = query.order_by(Event.timestamp.desc()).limit(limit).offset(offset).all()
+    events = query.order_by(Event.created_at.desc()).limit(limit).offset(offset).all()
     
     alerts = []
     for event in events:
+        event_severity = severity_map.get(event.type, 'low')
         alerts.append(AlertResponse(
             id=event.id,
             device_id=event.device_id,
-            severity=event.severity or 'low',
-            alert_type=event.event_type or 'unknown',
-            title=event.title or f"Event {event.id}",
+            severity=event_severity,
+            alert_type=event.type or 'unknown',
+            title=event.type.replace('_', ' ').title() if event.type else f"Event {event.id}",
             narrative=event.description,
             acknowledged=False,
-            timestamp=event.timestamp.isoformat() if event.timestamp else None
+            timestamp=event.created_at.isoformat() if event.created_at else None
         ))
     
     return AlertsListResponse(count=len(alerts), alerts=alerts)
