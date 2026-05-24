@@ -117,12 +117,15 @@ const SetupWizard = ({ onComplete }) => {
   // Navigation handlers
   const handleNext = () => {
     if (currentStep === 1) {
-      // Step 1: Welcome - Start Scan button
+      setCurrentStep(2);
       return;
     }
     if (currentStep === 2) {
-      setError(null);
-      setCurrentStep(2);
+      setCurrentStep(3);
+      return;
+    }
+    if (currentStep === 3) {
+      onComplete({ routerInfo, devices });
     }
   };
 
@@ -322,10 +325,8 @@ const SetupWizard = ({ onComplete }) => {
       case 1:
         return renderWelcome();
       case 2:
-        return renderDiscovery();
-      case 3:
         return renderDeviceScan();
-      case 4:
+      case 3:
         return renderConfirmation();
       default:
         return renderWelcome();
