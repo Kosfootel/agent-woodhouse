@@ -44,7 +44,7 @@ class DiscoverResponse(BaseModel):
     routers: List[DiscoveredRouter]
 
 
-class RouterCredentials(BaseModel):
+class RouterCredentialsInput(BaseModel):
     ip: str
     username: str
     password: str
@@ -205,7 +205,7 @@ def connect_router(credentials: RouterCredentials, db: Session = Depends(get_db)
         
         # Use ARP-based discovery (no router credentials needed)
         from app.routers.implementations.generic import GenericRouter
-        from app.routers.base import RouterCredentials; creds = RouterCredentials(ip_address=credentials.ip, username=credentials.username, password=credentials.password); router_impl = GenericRouter(creds)
+        from app.routers.base import RouterCredentials as BaseRouterCreds; creds = BaseRouterCreds(ip_address=credentials.ip, username=credentials.username, password=credentials.password); router_impl = GenericRouter(creds)
         devices_data = router_impl.get_connected_devices()
         
         if not devices_data:
