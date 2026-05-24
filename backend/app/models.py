@@ -44,7 +44,7 @@ class PromptLog(Base):
     source_ip = Column(String, nullable=True)
 
 
-class ToolInvocation(BaseModel):
+class ToolInvocation(Base):
     """Log of tool invocations (MCP, function calls)."""
     __tablename__ = "tool_invocations"
     
