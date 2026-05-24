@@ -142,6 +142,7 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
             # Update existing device
             existing.ip = get_attr(device_data, 'ip_address', existing.ip)
             existing.hostname = get_attr(device_data, 'hostname') or existing.hostname
+            existing.vendor = get_attr(device_data, "vendor") or existing.vendor
             existing.last_seen = datetime.utcnow()
             existing.containment_status = 'observing'
         else:
@@ -162,6 +163,7 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
                 ip=get_attr(device_data, 'ip_address', '0.0.0.0'),
                 hostname=get_attr(device_data, 'hostname', 'Unknown Device'),
                 device_type=device_type,
+                vendor=get_attr(device_data, "vendor"),
                 containment_status='observing',
                 trust_score=50.0
             )
