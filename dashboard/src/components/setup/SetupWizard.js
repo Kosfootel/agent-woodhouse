@@ -9,7 +9,7 @@ import {
 } from '../../lib/routerDiscovery';
 import './SetupWizard.css';
 
-const TOTAL_STEPS = 4;  // Reduced from 5 to 4 (removed credentials step)
+const TOTAL_STEPS = 3;  // Welcome -> Device Scan -> Complete
 
 const SetupWizard = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(1);
@@ -45,20 +45,10 @@ const SetupWizard = ({ onComplete }) => {
     });
   }, [currentStep, routerInfo, devices]);
 
-  // Step 2: Proceed to device scanning (ARP-based, no router detection)
-  const handleScanNetwork = async () => {
+  // Step 1: Start device scanning (goes to step 2)
+  const handleStartScan = async () => {
     setIsLoading(true);
     setError(null);
-    setScanProgress(0);
-    
-    // Simulate brief progress
-    const progressInterval = setInterval(() => {
-      setScanProgress(prev => Math.min(prev + 20, 100));
-    }, 100);
-    
-    await new Promise(resolve => setTimeout(resolve, 500));
-    clearInterval(progressInterval);
-    setScanProgress(100);
     
     // Set default router info for display
     setRouterInfo({
@@ -68,10 +58,10 @@ const SetupWizard = ({ onComplete }) => {
     });
     
     setIsLoading(false);
-    setCurrentStep(3);
+    setCurrentStep(2);
   };
 
-  // Step 3: Scan for devices (ARP-based, no credentials needed)
+  // Step 2: Scan for devices (ARP-based, no credentials needed)
   const handleScanDevices = async () => {
     console.log('Scan Devices clicked');
     setIsLoading(true);
@@ -116,7 +106,7 @@ const SetupWizard = ({ onComplete }) => {
     }
   };
 
-  // Step 4: Complete setup
+  // Step 3: Complete setup
   const handleComplete = () => {
     clearProgress();
     if (onComplete) {
@@ -127,6 +117,10 @@ const SetupWizard = ({ onComplete }) => {
   // Navigation handlers
   const handleNext = () => {
     if (currentStep === 1) {
+      // Step 1: Welcome - Start Scan button
+      return;
+    }
+    if (currentStep === 2) {
       setError(null);
       setCurrentStep(2);
     }
@@ -205,14 +199,14 @@ const SetupWizard = ({ onComplete }) => {
         <div className="error-message">
           <div className="error-icon">⚠️</div>
           <p>{error}</p>
-          <button className="btn btn-secondary" onClick={handleScanNetwork}>
+          <button className="btn btn-secondary" onClick={handleStartScan}>
             Try Again
           </button>
         </div>
       )}
       
       {!isLoading && !routerInfo && !error && (
-        <button className="btn btn-primary" onClick={handleScanNetwork}>
+        <button className="btn btn-primary" onClick={handleStartScan}>
           Scan Network
         </button>
       )}
@@ -230,7 +224,7 @@ const SetupWizard = ({ onComplete }) => {
     </div>
   );
 
-  // Render Step 3: Device Scanning (was Step 4, now simplified)
+  // Render Step 2: Device Scanning
   const renderDeviceScan = () => (
     <div className="step-content test-step">
       <h2>Discovering devices...</h2>
@@ -280,7 +274,7 @@ const SetupWizard = ({ onComplete }) => {
     </div>
   );
 
-  // Render Step 4: Confirmation (was Step 5)
+  // Render Step 3: Confirmation
   const renderConfirmation = () => (
     <div className="step-content confirmation-step">
       <h2>Does this look right?</h2>
