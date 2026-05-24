@@ -131,7 +131,7 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
     count = 0
     
     for device_data in devices_data:
-        mac = device_data.get('mac_address', '').upper()
+        mac = get_attr(device_data, 'mac_address', '').upper()
         if not mac:
             continue
         
@@ -140,13 +140,13 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
         
         if existing:
             # Update existing device
-            existing.ip = device_data.get('ip_address', existing.ip)
-            existing.hostname = device_data.get('hostname') or existing.hostname
+            existing.ip = get_attr(device_data, 'ip_address', existing.ip)
+            existing.hostname = get_attr(device_data, 'hostname') or existing.hostname
             existing.last_seen = datetime.utcnow()
             existing.containment_status = 'observing'
         else:
             # Determine device type from hostname/connection
-            hostname = device_data.get('hostname', '').lower()
+            hostname = get_attr(device_data, 'hostname', '').lower()
             device_type = 'unknown'
             
             if any(kw in hostname for kw in ['phone', 'iphone', 'pixel', 'samsung']):
@@ -159,8 +159,8 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
             # Create new device
             new_device = Device(
                 mac=mac,
-                ip=device_data.get('ip_address', '0.0.0.0'),
-                hostname=device_data.get('hostname', 'Unknown Device'),
+                ip=get_attr(device_data, 'ip_address', '0.0.0.0'),
+                hostname=get_attr(device_data, 'hostname', 'Unknown Device'),
                 device_type=device_type,
                 containment_status='observing',
                 trust_score=50.0
@@ -237,6 +237,15 @@ def connect_router(credentials: RouterCredentialsInput, db: Session = Depends(ge
         )
 
 
+
+
+# Helper to get attribute from dict or dataclass
+def get_attr(obj, key, default=None):
+    if hasattr(obj, key):
+        return getattr(obj, key, default)
+    elif isinstance(obj, dict):
+        return obj.get(key, default)
+    return default
 @router.get("/setup/status", response_model=SetupStatus)
 def get_setup_status(db: Session = Depends(get_db)):
     """
