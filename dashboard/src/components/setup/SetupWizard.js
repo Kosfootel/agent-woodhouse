@@ -94,7 +94,7 @@ const SetupWizard = ({ onComplete }) => {
         );
         const devicesData = await devicesResponse.json();
         setDevices(devicesData.devices || []);
-        setCurrentStep(4);
+        setCurrentStep(3);
       } else {
         setError(result.message || 'Failed to scan network');
       }
@@ -270,7 +270,7 @@ const SetupWizard = ({ onComplete }) => {
       )}
       
       {!isLoading && devices.length > 0 && (
-        <button className="btn btn-primary" onClick={() => setCurrentStep(4)}>
+        <button className="btn btn-primary" onClick={() => setCurrentStep(3)}>
           Continue →
         </button>
       )}
