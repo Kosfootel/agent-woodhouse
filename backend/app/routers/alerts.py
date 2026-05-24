@@ -1,11 +1,14 @@
-"""Alerts API router for Vigil - uses Event model."""
-from fastapi import APIRouter, Depends, HTTPException
+"""Alerts API router for Vigil - uses Alert model with proper endpoints."""
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models import get_db, Event
+from datetime import datetime
+from app.models import get_db, Alert
+import logging
 
-router = APIRouter(prefix="/alerts", tags=["alerts"])
+logger = logging.getLogger(__name__)
+router = APIRouter(tags=["alerts"])
 
 
 class AlertResponse(BaseModel):
@@ -25,48 +28,80 @@ class AlertResponse(BaseModel):
 class AlertsListResponse(BaseModel):
     count: int
     alerts: List[AlertResponse]
+    new_count: int
+    acknowledged_count: int
 
 
-@router.get("/", response_model=AlertsListResponse)
+@router.get("/alerts", response_model=AlertsListResponse)
 async def get_alerts(
-    limit: int = 100,
-    offset: int = 0,
-    severity: Optional[str] = None,
-    acknowledged: Optional[bool] = None,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    severity: Optional[str] = Query(None, description="Filter by severity: critical, high, medium, low"),
+    acknowledged: Optional[bool] = Query(None, description="Filter by acknowledged status"),
     db: Session = Depends(get_db)
 ):
-    """Get alerts/events with optional filtering."""
-    query = db.query(Event)
+    """Get alerts with optional filtering."""
+    query = db.query(Alert)
     
-    # Severity mapping from event types
-    severity_map = {
-        'device_blocked': 'critical',
-        'alert_triggered': 'high',
-        'device_left': 'medium',
-        'device_joined': 'low',
-    }
+    if severity:
+        query = query.filter(Alert.severity == severity)
+    if acknowledged is not None:
+        query = query.filter(Alert.acknowledged == acknowledged)
     
-    events = query.order_by(Event.created_at.desc()).limit(limit).offset(offset).all()
+    total = query.count()
+    new_count = db.query(Alert).filter(Alert.acknowledged == False).count()
+    acknowledged_count = db.query(Alert).filter(Alert.acknowledged == True).count()
     
-    alerts = []
-    for event in events:
-        event_severity = severity_map.get(event.type, 'low')
-        alerts.append(AlertResponse(
-            id=event.id,
-            device_id=event.device_id,
-            severity=event_severity,
-            alert_type=event.type or 'unknown',
-            title=event.type.replace('_', ' ').title() if event.type else f"Event {event.id}",
-            narrative=event.description,
-            acknowledged=False,
-            timestamp=event.created_at.isoformat() if event.created_at else None
-        ))
+    alerts = query.order_by(Alert.created_at.desc()).limit(limit).offset(offset).all()
     
-    return AlertsListResponse(count=len(alerts), alerts=alerts)
+    return AlertsListResponse(
+        count=len(alerts),
+        new_count=new_count,
+        acknowledged_count=acknowledged_count,
+        alerts=[
+            AlertResponse(
+                id=alert.id,
+                device_id=alert.device_id,
+                severity=alert.severity,
+                alert_type=alert.type or 'unknown',
+                title=alert.message[:50] + "..." if alert.message and len(alert.message) > 50 else (alert.message or 'Alert'),
+                narrative=alert.message,
+                acknowledged=alert.acknowledged,
+                timestamp=alert.created_at.isoformat() if alert.created_at else None
+            )
+            for alert in alerts
+        ]
+    )
 
 
-@router.get("/count")
+@router.post("/alerts/{alert_id}/acknowledge")
+async def acknowledge_alert(alert_id: int, db: Session = Depends(get_db)):
+    """Acknowledge a single alert."""
+    alert = db.query(Alert).filter(Alert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    
+    alert.acknowledged = True
+    alert.acknowledged_at = datetime.utcnow()
+    db.commit()
+    
+    return {"status": "acknowledged", "alert_id": alert_id}
+
+
+@router.post("/alerts/acknowledge-all")
+async def acknowledge_all_alerts(db: Session = Depends(get_db)):
+    """Acknowledge all unacknowledged alerts."""
+    count = db.query(Alert).filter(Alert.acknowledged == False).update({
+        "acknowledged": True,
+        "acknowledged_at": datetime.utcnow()
+    })
+    db.commit()
+    
+    return {"status": "acknowledged", "count": count}
+
+
+@router.get("/alerts/count")
 async def get_alert_count(db: Session = Depends(get_db)):
     """Get count of unacknowledged alerts."""
-    count = db.query(Event).count()
+    count = db.query(Alert).filter(Alert.acknowledged == False).count()
     return {"count": count}

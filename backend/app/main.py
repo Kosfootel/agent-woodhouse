@@ -4,7 +4,7 @@ FastAPI application for security scanning, logging, and anomaly detection.
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import security, devices, alerts, stats, setup, agents, setup_session, setup_router_credentials
+from app.routers import security, devices, alerts, stats, setup, agents, setup_session, setup_router_credentials, events
 
 app = FastAPI(
     title="Vigil Security Service",
@@ -15,7 +15,7 @@ app = FastAPI(
 # Configure CORS - allow dashboard origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://192.168.50.30:8085", "http://localhost:3000"],
+    allow_origins=["http://192.168.50.30:8085", "http://localhost:3000", "http://192.168.50.30:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,6 +30,7 @@ app.include_router(setup.router, prefix="/api")
 app.include_router(setup_session.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(setup_router_credentials.router, prefix="/api")
+app.include_router(events.router, prefix="/api")
 
 @app.get("/")
 def root():

@@ -116,26 +116,34 @@ async def submit_router_credentials(
         # Determine vendor
         vendor = credentials.vendor or "unknown"
         
-        # Check if router config already exists
+        # Check if router config already exists - update instead of delete/insert
         existing = db.query(Device).filter(Device.mac == "ROUTER_CONFIG").first()
+        
         if existing:
-            db.delete(existing)
+            # Update existing record to avoid UNIQUE constraint issues
+            existing.ip = credentials.router_ip
+            existing.hostname = f"ROUTER:{vendor}"
+            existing.nickname = credentials.admin_username
+            existing.vendor = vendor
+            existing.metadata = f"encrypted_password:{encrypted_password}"
+            existing.last_seen = datetime.utcnow()
+            router_config = existing
+        else:
+            # Create new record
+            router_config = Device(
+                mac="ROUTER_CONFIG",
+                ip=credentials.router_ip,
+                hostname=f"ROUTER:{vendor}",
+                nickname=credentials.admin_username,  # Store username in nickname
+                vendor=vendor,
+                device_type="router",
+                containment_status="trusted",
+                trust_score=100.0,
+                discovery_method="manual_setup",
+                metadata=f"encrypted_password:{encrypted_password}"
+            )
+            db.add(router_config)
         
-        # Store router configuration in database
-        router_config = Device(
-            mac="ROUTER_CONFIG",
-            ip=credentials.router_ip,
-            hostname=f"ROUTER:{vendor}",
-            nickname=credentials.admin_username,  # Store username in nickname
-            vendor=vendor,
-            device_type="router",
-            containment_status="trusted",
-            trust_score=100.0,
-            discovery_method="manual_setup",
-            metadata=f"encrypted_password:{encrypted_password}"
-        )
-        
-        db.add(router_config)
         db.commit()
         
         # Update setup session

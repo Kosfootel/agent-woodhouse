@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 import sqlite3
 from datetime import datetime, timedelta
 
-router = APIRouter(prefix="/api/events", tags=["events"])
+router = APIRouter(tags=["events"])
 
 # Database path
 DB_PATH = "/home/erik-ross/projects/vigil-home/vigil.db"
@@ -31,7 +31,7 @@ def get_db_connection():
     return conn
 
 
-@router.get("/", response_model=EventsListResponse)
+@router.get("/events", response_model=EventsListResponse)
 async def get_events(
     limit: int = 100,
     offset: int = 0,
@@ -105,7 +105,7 @@ async def get_events(
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
-@router.get("/{event_id}", response_model=EventResponse)
+@router.get("/events/{event_id}", response_model=EventResponse)
 async def get_event(event_id: int):
     """Get a specific event by ID."""
     try:
