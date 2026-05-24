@@ -7,7 +7,7 @@ const AgentsPage = () => {
   const [trustFilter, setTrustFilter] = useState('all');
   const [actionInProgress, setActionInProgress] = useState(null);
 
-  const API_URL = 'http://192.168.50.30:8005';
+  const API_URL = 'http://192.168.50.30:8000';
 
   useEffect(() => {
     const fetchAgents = async () => {

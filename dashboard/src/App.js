@@ -46,7 +46,7 @@ const Dashboard = () => {
   
   useEffect(() => {
     const checkSetup = () => {
-      fetch(`${process.env.REACT_APP_API_URL || 'http://192.168.50.30:8005'}/api/setup/status`)
+      fetch(`${process.env.REACT_APP_API_URL || 'http://192.168.50.30:8000'}/api/setup/status`)
         .then(res => res.json())
         .then(data => setIsSetupComplete(data.is_setup_complete))
         .catch(() => setIsSetupComplete(false));
