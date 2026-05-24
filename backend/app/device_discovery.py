@@ -373,6 +373,51 @@ class NetBIOSDiscovery:
         encoded += b"AA"  # Scope (00)
         return encoded
     
+    
+    async def discover(self) -> List[DiscoveryResult]:
+        """
+        Discover devices via NetBIOS network scan.
+        Queries common network ranges for NetBIOS names.
+        """
+        results = []
+        discovered_ips = set()
+        
+        # Common network ranges
+        networks = ["192.168.50", "192.168.1", "192.168.0", "10.0.0"]
+        targets = []
+        for net in networks:
+            for host in range(1, 255):
+                targets.append(f"{net}.{host}")
+        
+        # Limit concurrent scans
+        semaphore = asyncio.Semaphore(20)
+        
+        async def scan_with_limit(ip):
+            async with semaphore:
+                try:
+                    result = await asyncio.wait_for(
+                        self.query_device(ip),
+                        timeout=2.0
+                    )
+                    if result:
+                        return result
+                except asyncio.TimeoutError:
+                    pass
+                except Exception as e:
+                    logger.debug(f"NetBIOS scan failed for {ip}: {e}")
+                return None
+        
+        # Scan first 50 addresses to avoid long scan time
+        tasks = [scan_with_limit(ip) for ip in targets[:50]]
+        scan_results = await asyncio.gather(*tasks)
+        
+        for result in scan_results:
+            if result and result.ip and result.ip not in discovered_ips:
+                discovered_ips.add(result.ip)
+                results.append(result)
+        
+        return results
+
     async def query_device(self, ip: str) -> Optional[DiscoveryResult]:
         """Query a device for NetBIOS name."""
         try:
@@ -474,6 +519,53 @@ class SNMPDiscovery:
         self.community = community
         self.timeout = timeout
     
+    
+    async def discover(self) -> List[DiscoveryResult]:
+        """
+        Discover devices via SNMP network scan.
+        Queries common network ranges for SNMP-responsive devices.
+        """
+        results = []
+        discovered_ips = set()
+        
+        # Common network ranges - focus on gateways and common device addresses
+        networks = ["192.168.50", "192.168.1", "192.168.0", "10.0.0"]
+        targets = []
+        for net in networks:
+            # Routers and gateways
+            targets.extend([f"{net}.1", f"{net}.254"])
+            # Common device addresses
+            for host in range(2, 20):
+                targets.append(f"{net}.{host}")
+        
+        # Limit concurrent scans
+        semaphore = asyncio.Semaphore(15)
+        
+        async def scan_with_limit(ip):
+            async with semaphore:
+                try:
+                    result = await asyncio.wait_for(
+                        self.query_device(ip),
+                        timeout=3.0
+                    )
+                    if result:
+                        return result
+                except asyncio.TimeoutError:
+                    pass
+                except Exception as e:
+                    logger.debug(f"SNMP scan failed for {ip}: {e}")
+                return None
+        
+        tasks = [scan_with_limit(ip) for ip in targets]
+        scan_results = await asyncio.gather(*tasks)
+        
+        for result in scan_results:
+            if result and result.ip and result.ip not in discovered_ips:
+                discovered_ips.add(result.ip)
+                results.append(result)
+        
+        return results
+
     async def query_device(self, ip: str) -> Optional[DiscoveryResult]:
         """Query a device via SNMP for system information."""
         try:
