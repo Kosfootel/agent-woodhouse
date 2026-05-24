@@ -11,7 +11,7 @@ Updated to use new router abstraction architecture (factory pattern).
 
 import os
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -29,6 +29,7 @@ from app.routers.implementations.generic import GenericRouter
 
 # Import device discovery service for multi-protocol scanning
 from app.device_discovery import DeviceDiscoveryService, DiscoverySource, DiscoveryResult
+from app.active_discovery import run_active_scan, ActiveDiscovery
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["setup"])
@@ -265,6 +266,90 @@ def import_discovery_results(devices: List[DiscoveryResult], db: Session) -> int
     return count
 
 
+def import_active_scan_results(devices: List[Dict], db: Session) -> int:
+    """
+    Import devices discovered via active port scanning.
+    Returns count of new devices imported.
+    """
+    count = 0
+    scanner = ActiveDiscovery()
+    
+    for device_info in devices:
+        ip = device_info['ip']
+        open_ports = device_info.get('open_ports', [])
+        
+        if not ip:
+            continue
+        
+        # Try to find existing device by IP
+        existing = db.query(Device).filter(Device.ip == ip).first()
+        
+        # OS fingerprinting
+        os_guess = scanner.fingerprint_os(open_ports)
+        device_type = scanner.infer_device_type(open_ports, os_guess)
+        
+        # Build metadata
+        import json
+        metadata = {
+            "open_ports": open_ports,
+            "discovery_method": "active_scan",
+            "confidence": device_info.get('confidence', 0.6),
+            "os_guess": os_guess
+        }
+        
+        if existing:
+            # Update existing device with enriched info
+            if hasattr(existing, 'os_info'):
+                existing.os_info = os_guess
+            existing.device_type = device_type if existing.device_type == 'unknown' else existing.device_type
+            
+            # Update discovery_method to show active scan was used
+            if existing.discovery_method == 'manual':
+                existing.discovery_method = "active_scan"
+            elif "active_scan" not in existing.discovery_method:
+                existing.discovery_method = f"{existing.discovery_method},active_scan"
+            
+            existing.last_seen = datetime.utcnow()
+            
+            # Update metadata
+            if existing.metadata:
+                try:
+                    existing_meta = json.loads(existing.metadata) if isinstance(existing.metadata, str) else existing.metadata
+                    existing_meta.update(metadata)
+                    existing.metadata = json.dumps(existing_meta)
+                except:
+                    existing.metadata = json.dumps(metadata)
+            else:
+                existing.metadata = json.dumps(metadata)
+        else:
+            # Create new device from active scan
+            new_device = Device(
+                mac=f"ACTIVE_{ip.replace('.', '_')}",
+                ip=ip,
+                hostname=f"Active-Scan-{ip.split('.')[-1]}",
+                device_type=device_type,
+                vendor=os_guess,
+                containment_status='observing',
+                trust_score=40.0,  # Lower trust for active-only devices
+                discovery_method="active_scan",
+                metadata=json.dumps(metadata)
+            )
+            db.add(new_device)
+            
+            # Create event log
+            ports_str = ", ".join([str(p['port']) for p in open_ports])
+            event = Event(
+                type='device_joined',
+                description=f"New device via active scan: {ip} (ports: {ports_str})"
+            )
+            db.add(event)
+            count += 1
+            logger.info(f"Imported active-scan device: {ip} with ports {ports_str}")
+    
+    db.commit()
+    return count
+
+
 # ============ API Endpoints ============
 
 
@@ -326,13 +411,29 @@ async def connect_router(credentials: RouterCredentialsInput, db: Session = Depe
             import traceback
             logger.error(traceback.format_exc())
         
+        # Run active scanning for devices not found via passive discovery
+        active_devices = []
+        try:
+            logger.info("Starting active network scanning (TCP port scanning)...")
+            active_devices = await run_active_scan(network="192.168.50", timeout=2.0)
+            logger.info(f"Active scanning found {len(active_devices)} additional devices")
+            
+            # Import discovered devices from active scanning
+            if active_devices:
+                active_imported = import_active_scan_results(active_devices, db)
+                logger.info(f"Imported {active_imported} new devices from active scan")
+        except Exception as e:
+            logger.error(f"Active scanning failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
         # Get total device count for response
         total_devices = db.query(Device).filter(Device.mac != "ROUTER_CONFIG").count()
         
         return ConnectResponse(
             success=True,
             devices_found=total_devices,
-            message=f"Discovery complete. ARP: {arp_count}, Multi-protocol: {len(discovered_devices)}, Total in DB: {total_devices}"
+            message=f"Discovery complete. ARP: {arp_count}, Multi-protocol: {len(discovered_devices)}, Active: {len(active_devices)}, Total in DB: {total_devices}"
         )
         
     except Exception as e:
