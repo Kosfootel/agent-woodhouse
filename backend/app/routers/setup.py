@@ -205,7 +205,7 @@ def connect_router(credentials: RouterCredentials, db: Session = Depends(get_db)
         
         # Use ARP-based discovery (no router credentials needed)
         from app.routers.implementations.generic import GenericRouter
-        router_impl = GenericRouter(credentials.ip, credentials.username, credentials.password)
+        from ..base import RouterCredentials; creds = RouterCredentials(ip_address=credentials.ip, username=credentials.username, password=credentials.password); router_impl = GenericRouter(creds)
         devices_data = router_impl.get_devices()
         
         if not devices_data:
