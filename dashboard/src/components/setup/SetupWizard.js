@@ -109,7 +109,7 @@ const SetupWizard = ({ onComplete }) => {
       
       // Call backend API to discover devices via ARP
       const response = await fetch(
-        `http://192.168.50.30:8005/api/setup/connect`,
+        `http://192.168.50.30:8000/api/setup/connect`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -127,7 +127,7 @@ const SetupWizard = ({ onComplete }) => {
       if (result.success) {
         // Fetch devices from backend
         const devicesResponse = await fetch(
-          `http://192.168.50.30:8005/api/devices`
+          `http://192.168.50.30:8000/api/devices`
         );
         const devicesData = await devicesResponse.json();
         setDevices(devicesData.devices || []);
