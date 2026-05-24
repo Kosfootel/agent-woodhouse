@@ -27,6 +27,9 @@ from app.routers.discovery import RouterDiscovery
 # from app.routers.base import RouterException, RouterAuthError, RouterConnectionError
 from app.routers.implementations.generic import GenericRouter
 
+# Import device discovery service for multi-protocol scanning
+from app.device_discovery import DeviceDiscoveryService, DiscoverySource, DiscoveryResult
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["setup"])
 
@@ -60,6 +63,14 @@ class SetupStatus(BaseModel):
     is_setup_complete: bool
     router_connected: bool
     device_count: int
+
+
+class AgentAnnouncementInput(BaseModel):
+    name: str
+    ip: str
+    mac: Optional[str] = None
+    agent_type: str = "mesh"
+    capabilities: List[str] = []
 
 
 # ============ Helper Functions ============
@@ -182,6 +193,78 @@ def import_devices_from_router(devices_data: list, db: Session) -> int:
     return count
 
 
+def import_discovery_results(devices: List[DiscoveryResult], db: Session) -> int:
+    """
+    Import devices discovered via multi-protocol scanning.
+    Returns count of new devices imported.
+    """
+    count = 0
+    
+    for result in devices:
+        # Get the best identifier - prefer MAC, fall back to IP
+        mac = result.mac
+        ip = result.ip
+        
+        if not mac and not ip:
+            continue
+            
+        # Try to find existing device by MAC or IP
+        existing = None
+        if mac:
+            existing = db.query(Device).filter(Device.mac == mac.upper()).first()
+        if not existing and ip:
+            existing = db.query(Device).filter(Device.ip == ip).first()
+        
+        # Determine the best name to use
+        name = (result.device_name or 
+                result.hostname or 
+                f"Device-{ip.split('.')[-1] if ip else 'unknown'}")
+        
+        # Get device type from result
+        device_type = result.device_type or 'unknown'
+        
+        if existing:
+            # Update existing device with enriched info
+            existing.ip = ip or existing.ip
+            existing.hostname = result.hostname or existing.hostname
+            existing.vendor = result.vendor or existing.vendor
+            existing.device_type = device_type if device_type != 'unknown' else existing.device_type
+            
+            # Update discovery_method to show multi-protocol was used
+            if existing.discovery_method == 'manual':
+                existing.discovery_method = result.source.value
+            elif result.source.value not in existing.discovery_method:
+                existing.discovery_method = f"{existing.discovery_method},{result.source.value}"
+            
+            existing.last_seen = datetime.utcnow()
+        else:
+            # Create new device from discovery result
+            new_device = Device(
+                mac=mac.upper() if mac else f"DISCOVERED_{ip.replace('.', '_')}",
+                ip=ip or '0.0.0.0',
+                hostname=result.hostname,
+                nickname=result.device_name,
+                device_type=device_type,
+                vendor=result.vendor,
+                model=result.model,
+                containment_status='observing',
+                trust_score=50.0,
+                discovery_method=result.source.value
+            )
+            db.add(new_device)
+            
+            # Create event log
+            event = Event(
+                type='device_joined',
+                description=f"New device via {result.source.value}: {name} ({ip})"
+            )
+            db.add(event)
+            count += 1
+    
+    db.commit()
+    return count
+
+
 # ============ API Endpoints ============
 
 
@@ -195,37 +278,61 @@ def discover_routers():
 
 
 @router.post("/setup/connect", response_model=ConnectResponse)
-def connect_router(credentials: RouterCredentialsInput, db: Session = Depends(get_db)):
+async def connect_router(credentials: RouterCredentialsInput, db: Session = Depends(get_db)):
     """
-    Connect to network and discover devices via ARP scanning.
+    Connect to network and discover devices via ARP scanning + multi-protocol discovery.
     
     Router API integration is a future enhancement - see docs/ASUS_RESEARCH.md
-    For now, uses ARP table scanning which doesn't require router credentials.
+    For now, uses ARP table scanning which doesn't require router credentials,
+    plus mDNS/UPnP/NetBIOS/SNMP for enhanced device discovery.
     """
     try:
-        logger.info(f"Starting device discovery via ARP scanning")
+        logger.info(f"Starting device discovery via ARP scanning + multi-protocol discovery")
         
         # Use ARP-based discovery (no router credentials needed)
         from app.routers.implementations.generic import GenericRouter
-        from app.routers.base import RouterCredentials as BaseRouterCreds; creds = BaseRouterCreds(ip_address=credentials.ip, username=credentials.username, password=credentials.password); router_impl = GenericRouter(creds)
+        from app.routers.base import RouterCredentials as BaseRouterCreds
+        creds = BaseRouterCreds(ip_address=credentials.ip, username=credentials.username, password=credentials.password)
+        router_impl = GenericRouter(creds)
         devices_data = router_impl.get_connected_devices()
         
-        if not devices_data:
-            return ConnectResponse(
-                success=False,
-                devices_found=0,
-                message="No devices found on network"
-            )
+        arp_count = len(devices_data) if devices_data else 0
+        logger.info(f"ARP discovery found {arp_count} devices")
         
-        # Import devices into database
-        imported_count = import_devices_from_router(devices_data, db)
+        # Import ARP-discovered devices first
+        if devices_data:
+            arp_imported = import_devices_from_router(devices_data, db)
+            logger.info(f"Imported {arp_imported} devices from ARP scan")
         
-        logger.info(f"Successfully imported {imported_count} devices via ARP")
+        # Run multi-protocol discovery
+        discovery_service = DeviceDiscoveryService()
+        discovered_devices = []
+        
+        try:
+            logger.info("Starting multi-protocol discovery (UPnP/mDNS/NetBIOS/SNMP)...")
+            discovered_devices = await discovery_service.scan_network()
+            logger.info(f"Multi-protocol discovery found {len(discovered_devices)} devices")
+            
+            # Log each discovered device
+            for device in discovered_devices:
+                logger.info(f"  - {device.device_name or device.hostname or 'unknown'} @ {device.ip} via {device.source.value}")
+            
+            # Import discovered devices
+            if discovered_devices:
+                discovery_imported = import_discovery_results(discovered_devices, db)
+                logger.info(f"Imported {discovery_imported} new devices from multi-protocol scan")
+        except Exception as e:
+            logger.error(f"Multi-protocol discovery failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # Get total device count for response
+        total_devices = db.query(Device).filter(Device.mac != "ROUTER_CONFIG").count()
         
         return ConnectResponse(
             success=True,
-            devices_found=imported_count,
-            message=f"Discovered and imported {imported_count} devices"
+            devices_found=total_devices,
+            message=f"Discovery complete. ARP: {arp_count}, Multi-protocol: {len(discovered_devices)}, Total in DB: {total_devices}"
         )
         
     except Exception as e:
@@ -239,15 +346,100 @@ def connect_router(credentials: RouterCredentialsInput, db: Session = Depends(ge
         )
 
 
+@router.post("/setup/agent/announce")
+async def announce_agent(announcement: AgentAnnouncementInput, db: Session = Depends(get_db)):
+    """
+    Allow agents to self-announce to Vigil.
+    
+    This endpoint allows mesh agents to register themselves with the Vigil
+    system, marking them as known agents in the device database.
+    """
+    logger.info(f"Agent announcement: {announcement.name} @ {announcement.ip}")
+    
+    # Check if device exists by IP
+    device = db.query(Device).filter(Device.ip == announcement.ip).first()
+    
+    # Also check by MAC if provided
+    if not device and announcement.mac:
+        device = db.query(Device).filter(Device.mac == announcement.mac.upper()).first()
+    
+    # Build metadata JSON string
+    metadata_str = f"agent_type:{announcement.agent_type};capabilities:{','.join(announcement.capabilities)};announced_at:{datetime.utcnow().isoformat()}"
+    
+    if device:
+        # Update existing device
+        device.nickname = announcement.name
+        device.last_seen = datetime.utcnow()
+        
+        # Store agent info in hostname field or vendor field as markers
+        device.hostname = f"AGENT:{announcement.name}"
+        device.vendor = f"VIGIL_AGENT:{announcement.agent_type}"
+        
+        db.commit()
+        logger.info(f"Updated existing device {device.id} as agent {announcement.name}")
+        return {
+            "status": "updated",
+            "device_id": device.id,
+            "message": f"Agent {announcement.name} updated on existing device"
+        }
+    else:
+        # Create new device record for the agent
+        mac_addr = announcement.mac.upper() if announcement.mac else f"AGENT_{announcement.ip.replace('.', '_')}"
+        new_device = Device(
+            mac=mac_addr,
+            ip=announcement.ip,
+            hostname=f"AGENT:{announcement.name}",
+            nickname=announcement.name,
+            vendor=f"VIGIL_AGENT:{announcement.agent_type}",
+            device_type="agent",
+            containment_status='trusted',
+            trust_score=100.0,
+            discovery_method="agent_announcement",
+            is_known=True
+        )
+        db.add(new_device)
+        db.commit()
+        
+        # Create event log
+        event = Event(
+            type='agent_registered',
+            description=f"New agent registered: {announcement.name} ({announcement.ip}) type={announcement.agent_type}"
+        )
+        db.add(event)
+        db.commit()
+        
+        logger.info(f"Created new agent device {new_device.id} for {announcement.name}")
+        return {
+            "status": "created",
+            "device_id": new_device.id,
+            "message": f"Agent {announcement.name} registered as new device"
+        }
 
 
-# Helper to get attribute from dict or dataclass
-def get_attr(obj, key, default=None):
-    if hasattr(obj, key):
-        return getattr(obj, key, default)
-    elif isinstance(obj, dict):
-        return obj.get(key, default)
-    return default
+@router.get("/setup/agents")
+async def list_agents(db: Session = Depends(get_db)):
+    """
+    List all registered agents.
+    """
+    # Find devices marked as agents
+    agents = db.query(Device).filter(Device.hostname.like("AGENT:%")).all()
+    
+    return {
+        "count": len(agents),
+        "agents": [
+            {
+                "id": agent.id,
+                "name": agent.nickname,
+                "ip": agent.ip,
+                "mac": agent.mac,
+                "type": agent.vendor.replace("VIGIL_AGENT:", "") if agent.vendor and agent.vendor.startswith("VIGIL_AGENT:") else "unknown",
+                "last_seen": agent.last_seen.isoformat() if agent.last_seen else None
+            }
+            for agent in agents
+        ]
+    }
+
+
 @router.get("/setup/status", response_model=SetupStatus)
 def get_setup_status(db: Session = Depends(get_db)):
     """
@@ -262,3 +454,12 @@ def get_setup_status(db: Session = Depends(get_db)):
         router_connected=device_count > 0,
         device_count=device_count
     )
+
+
+# Helper to get attribute from dict or dataclass
+def get_attr(obj, key, default=None):
+    if hasattr(obj, key):
+        return getattr(obj, key, default)
+    elif isinstance(obj, dict):
+        return obj.get(key, default)
+    return default
