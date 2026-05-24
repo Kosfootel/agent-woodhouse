@@ -13,8 +13,10 @@ from sqlalchemy.orm import sessionmaker, Session
 Base = declarative_base()
 
 # Database setup - use environment variable or default
-DATABASE_PATH = os.getenv(DATABASE_PATH, /app/vigil_security.db)
-engine = create_engine(fsqlite:///{DATABASE_PATH}, connect_args={"check_same_thread": False})
+# DATABASE_PATH is a file path like /app/data/vigil.db
+DATABASE_FILE = os.getenv("DATABASE_PATH", "/app/vigil_security.db")
+DATABASE_URL = f"sqlite:///{DATABASE_FILE}"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -42,7 +44,7 @@ class PromptLog(Base):
     source_ip = Column(String, nullable=True)
 
 
-class ToolInvocation(Base):
+class ToolInvocation(BaseModel):
     """Log of tool invocations (MCP, function calls)."""
     __tablename__ = "tool_invocations"
     
@@ -50,36 +52,32 @@ class ToolInvocation(Base):
     agent_id = Column(String, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
     tool_name = Column(String)
-    arguments = Column(JSON)
-    blocked = Column(Boolean, default=False)
-    block_reason = Column(String, nullable=True)
+    parameters = Column(JSON, default=dict)
     result = Column(Text, nullable=True)
-    execution_time_ms = Column(Float, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
 
 
 class MemoryAccess(Base):
-    """Log of file/memory access operations."""
+    """Log of memory file access operations."""
     __tablename__ = "memory_access"
     
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(String, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    access_type = Column(String)  # 'file_read', 'file_write', 'memory_read', etc.
-    resource_path = Column(String)
-    sensitivity_level = Column(String)  # 'critical', 'high', 'medium', 'low'
-    blocked = Column(Boolean, default=False)
-    content_hash = Column(String, nullable=True)
-    size_bytes = Column(Integer, nullable=True)
+    operation = Column(String)  # 'read', 'write', 'search'
+    file_path = Column(String)
+    success = Column(Boolean, default=True)
+    error_message = Column(Text, nullable=True)
 
 
 class SecurityEvent(Base):
-    """Aggregated security events and anomalies."""
+    """Security events and anomalies detected by Vigil."""
     __tablename__ = "security_events"
     
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(String, index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    event_type = Column(String)  # 'anomaly', 'threshold_breach', 'policy_violation'
+    event_type = Column(String)  # 'anomaly', 'policy_violation', 'suspicious_activity'
     severity = Column(String)  # 'critical', 'high', 'medium', 'low'
     description = Column(Text)
     details = Column(JSON, default=dict)
@@ -118,6 +116,8 @@ class Alert(Base):
     message = Column(Text)
     acknowledged = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by = Column(String, nullable=True)
 
 
 class Event(Base):
