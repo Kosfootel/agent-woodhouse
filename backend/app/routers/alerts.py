@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 # Database path
-DB_PATH = "/home/erik-ross/projects/vigil-home/vigil.db"
+DB_PATH = "/app/data/vigil.db"
 
 
 class AlertResponse(BaseModel):
