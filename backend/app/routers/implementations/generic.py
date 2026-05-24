@@ -665,7 +665,7 @@ class GenericRouter(BaseRouter):
                         "last_seen": datetime.now(),
                         "device_type": device_type,
                     }
-                    devices.append(device}
+                    devices.append(device)
             
             logger.info(f"Found {len(devices)} devices via ARP with enhanced identification"}
             
