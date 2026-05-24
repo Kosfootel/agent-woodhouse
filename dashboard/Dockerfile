@@ -14,7 +14,7 @@ RUN echo 'server { \
         try_files $uri $uri/ /index.html; \
     } \
     location /api { \
-        proxy_pass http://192.168.50.30:8005; \
+        proxy_pass http://192.168.50.30:8000; \
         proxy_set_header Host $host; \
         proxy_set_header X-Real-IP $remote_addr; \
         proxy_set_header Origin $http_origin; \
