@@ -663,7 +663,7 @@ class GenericRouter(BaseRouter):
                         connection_type="unknown",
                         is_online="REACHABLE" in line or "STALE" in line,
                         last_seen=datetime.now(),
-                        type=device_type,
+                        device_type=device_type,
                     )
                     devices.append(device)
             
