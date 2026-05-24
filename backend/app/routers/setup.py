@@ -23,7 +23,7 @@ from app.utils.crypto import encrypt_password, decrypt_password
 # Router integration commented out - future enhancement when Vigil is embedded in router
 # See docs/ASUS_RESEARCH.md for details
 # from app.routers.factory import RouterFactory, get_connected_devices
-# from app.routers.discovery import RouterDiscovery
+from app.routers.discovery import RouterDiscovery
 # from app.routers.base import RouterException, RouterAuthError, RouterConnectionError
 from app.routers.implementations.generic import GenericRouter
 
