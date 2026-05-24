@@ -24,13 +24,8 @@ const DevicesPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'online': return '🟢';
-      case 'offline': return '🔴';
-      case 'warning': return '🟡';
-      default: return '⚪';
-    }
+  const getStatusIcon = (online) => {
+    return online ? '🟢' : '🔴';
   };
 
   if (loading) {
@@ -61,19 +56,21 @@ const DevicesPage = () => {
               <tr>
                 <th>Status</th>
                 <th>Device</th>
+                <th>Vendor</th>
                 <th>Type</th>
                 <th>IP Address</th>
-                <th>Last Seen</th>
+                <th>MAC Address</th>
               </tr>
             </thead>
             <tbody>
               {devices.map((device, index) => (
                 <tr key={index}>
-                  <td>{getStatusIcon(device.status)}</td>
-                  <td>{device.name || 'Unknown'}</td>
-                  <td>{device.type || 'Unknown'}</td>
+                  <td>{getStatusIcon(device.online)}</td>
+                  <td>{device.nickname || device.hostname || 'Unknown'}</td>
+                  <td>{device.vendor || 'Unknown'}</td>
+                  <td>{device.device_type || 'Unknown'}</td>
                   <td>{device.ip || 'N/A'}</td>
-                  <td>{device.last_seen ? new Date(device.last_seen).toLocaleString() : 'N/A'}</td>
+                  <td>{device.mac || 'N/A'}</td>
                 </tr>
               ))}
             </tbody>
