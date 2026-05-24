@@ -246,7 +246,7 @@ def import_discovery_results(devices: List[DiscoveryResult], db: Session) -> int
                 nickname=result.device_name,
                 device_type=device_type,
                 vendor=result.vendor,
-                model=result.model,
+                
                 containment_status='observing',
                 trust_score=50.0,
                 discovery_method=result.source.value
