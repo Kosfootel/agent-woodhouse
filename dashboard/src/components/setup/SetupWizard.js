@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  scanForRouter,
   getDevices,
   translateError,
   saveProgress,
@@ -46,56 +45,30 @@ const SetupWizard = ({ onComplete }) => {
     });
   }, [currentStep, routerInfo, devices]);
 
-  // Step 2: Scan for network devices via ARP
+  // Step 2: Proceed to device scanning (ARP-based, no router detection)
   const handleScanNetwork = async () => {
     setIsLoading(true);
     setError(null);
     setScanProgress(0);
     
-    // Simulate progress updates
+    // Simulate brief progress
     const progressInterval = setInterval(() => {
-      setScanProgress(prev => Math.min(prev + 10, 80));
-    }, 300);
+      setScanProgress(prev => Math.min(prev + 20, 100));
+    }, 100);
     
-    try {
-      // Try to find router for display purposes
-      const result = await scanForRouter();
-      clearInterval(progressInterval);
-      
-      if (result) {
-        setScanProgress(100);
-        setError(null);
-        setRouterInfo({
-          ip: result.ip,
-          brand: 'Network',
-          model: 'Router',
-        });
-        
-        // Show "Found" message briefly
-        setShowFoundMessage(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setShowFoundMessage(false);
-        
-        // Now scan for devices
-        setCurrentStep(3);
-      } else {
-        // No router found, but we can still scan via ARP
-        setRouterInfo({
-          ip: '192.168.50.1',
-          brand: 'Network',
-          model: 'Router',
-        });
-        setShowFoundMessage(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setShowFoundMessage(false);
-        setCurrentStep(3);
-      }
-    } catch (err) {
-      clearInterval(progressInterval);
-      setError(translateError(err));
-    } finally {
-      setIsLoading(false);
-    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    clearInterval(progressInterval);
+    setScanProgress(100);
+    
+    // Set default router info for display
+    setRouterInfo({
+      ip: '192.168.50.1',
+      brand: 'Local',
+      model: 'Network',
+    });
+    
+    setIsLoading(false);
+    setCurrentStep(3);
   };
 
   // Step 3: Scan for devices (ARP-based, no credentials needed)
