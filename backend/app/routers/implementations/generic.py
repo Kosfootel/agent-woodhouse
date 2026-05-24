@@ -21,14 +21,14 @@ from ..base import (
     RouterDevice,
     RouterInfo,
     RouterConnectionError,
-}
+)
 
 
-logger = logging.getLogger(__name__}
+logger = logging.getLogger(__name__)
 
 # EXTENDED MAC OUI database - common consumer and enterprise vendors
 MAC_OUI_DB = {
-    # Apple (iPhone, iPad, Mac, Apple TV, HomePod, Watch}
+    # Apple (iPhone, iPad, Mac, Apple TV, HomePod, Watch)
     '40:6C:8F': 'Apple',
     'AC:88:FD': 'Apple',
     '68:AE:20': 'Apple',
@@ -50,7 +50,7 @@ MAC_OUI_DB = {
     '30:5A:3A': 'ASUS',
     '60:45:CB': 'ASUS',
     '90:E6:BA': 'ASUS',
-    # Realtek (common in budget devices}
+    # Realtek (common in budget devices)
     '00:E0:4C': 'Realtek',
     '00:C0:CA': 'Realtek',
     '52:54:00': 'Realtek/QEMU',
@@ -76,7 +76,7 @@ MAC_OUI_DB = {
     '10:E7:C6': 'HPE',
     '48:DF:37': 'HPE',
     '00:50:8B': 'HP',
-    # Samsung (phones, TVs, appliances}
+    # Samsung (phones, TVs, appliances)
     '4C:BA:D7': 'Samsung',
     'C8:A3:62': 'Samsung',
     'B8:D4:E1': 'Samsung',
@@ -101,7 +101,7 @@ MAC_OUI_DB = {
     '74:EB:80': 'Samsung',
     '78:47:1D': 'Samsung',
     '84:17:15': 'Samsung',
-    # LG (TVs, appliances, phones}
+    # LG (TVs, appliances, phones)
     'A8:6E:84': 'LG',
     '58:E2:FC': 'LG',
     '70:91:8F': 'LG',
@@ -113,7 +113,7 @@ MAC_OUI_DB = {
     '00:2C:26': 'LG',
     '00:30:E0': 'LG',
     '00:36:FE': 'LG',
-    # Sony (PlayStation, TVs, phones}
+    # Sony (PlayStation, TVs, phones)
     '10:B1:DF': 'Sony',
     '00:1D:0D': 'Sony',
     '00:1E:DC': 'Sony',
@@ -125,13 +125,13 @@ MAC_OUI_DB = {
     '00:A0:96': 'Sony',
     '04:4B:ED': 'Sony',
     '30:F9:ED': 'Sony',
-    # Microsoft (Xbox, Surface}
+    # Microsoft (Xbox, Surface)
     '50:1A:C5': 'Microsoft',
     '30:59:B7': 'Microsoft',
     '28:18:78': 'Microsoft',
     '1C:CF:2E': 'Microsoft',
     'B8:8A:60': 'Microsoft',
-    # Google (Pixel, Nest, Chromecast}
+    # Google (Pixel, Nest, Chromecast)
     'DA:45:15': 'Google',
     '54:60:09': 'Google',
     '00:1A:11': 'Google',
@@ -175,7 +175,7 @@ MAC_OUI_DB = {
     'E0:E7:51': 'Nintendo',
     'E8:4E:CE': 'Nintendo',
     'FC:AE:87': 'Nintendo',
-    # Amazon (Echo, Fire TV, Ring}
+    # Amazon (Echo, Fire TV, Ring)
     '00:FC:8B': 'Amazon',
     '08:71:90': 'Amazon',
     '0C:47:C9': 'Amazon',
@@ -276,7 +276,7 @@ MAC_OUI_DB = {
     'AA:F1:E8': 'Docker',
     '02:42': 'Docker',
     '02:00': 'Virtual',
-    # AzureWave (WiFi modules in IoT devices}
+    # AzureWave (WiFi modules in IoT devices)
     '58:FD:B1': 'AzureWave',
     '6C:AD:EF': 'AzureWave',
     '8C:7C:FF': 'AzureWave',
@@ -469,9 +469,9 @@ MAC_OUI_DB = {
 
 def get_vendor_from_mac(mac: str) -> Optional[str]:
     """Look up vendor from MAC OUI (first 3 bytes)."""
-    mac_upper = mac.upper().replace('-', ':'}
+    mac_upper = mac.upper().replace('-', ':')
     oui = mac_upper[:8]  # Format: XX:XX:XX
-    return MAC_OUI_DB.get(oui}
+    return MAC_OUI_DB.get(oui)
 
 
 def get_device_type_from_mac(mac: str, vendor: Optional[str]) -> str:
@@ -479,7 +479,7 @@ def get_device_type_from_mac(mac: str, vendor: Optional[str]) -> str:
     if not vendor:
         return "unknown"
     
-    vendor_lower = vendor.lower(}
+    vendor_lower = vendor.lower()
     
     # Apple devices
     if 'apple' in vendor_lower:
@@ -514,29 +514,29 @@ def reverse_dns_lookup(ip: str) -> Optional[str]:
     """Attempt reverse DNS lookup for IP address."""
     try:
         # Timeout after 2 seconds
-        socket.setdefaulttimeout(2}
-        hostname, _, _ = socket.gethostbyaddr(ip}
+        socket.setdefaulttimeout(2)
+        hostname, _, _ = socket.gethostbyaddr(ip)
         socket.setdefaulttimeout(None)  # Reset
         return hostname.split('.')[0]  # Return just the first part
     except:
-        socket.setdefaulttimeout(None}
+        socket.setdefaulttimeout(None)
         return None
 
 
 def get_device_name(mac: str, ip: str, vendor: Optional[str] = None) -> str:
     """Generate a meaningful device name with reverse DNS fallback."""
     # Try reverse DNS first for real hostname
-    hostname = reverse_dns_lookup(ip}
+    hostname = reverse_dns_lookup(ip)
     if hostname:
         return hostname
     
     # Fall back to MAC-based naming
     if not vendor:
-        vendor = get_vendor_from_mac(mac}
+        vendor = get_vendor_from_mac(mac)
     
     if vendor:
         # Clean up vendor name
-        short = vendor.split()[0].replace('-', '').replace('_', ''}
+        short = vendor.split()[0].replace('-', '').replace('_', '')
         return f"{short}-{mac.replace(':', '')[-4:].upper()}"
     
     return f"Device-{mac.replace(':', '')[-6:].upper()}"
@@ -551,7 +551,7 @@ class GenericRouter(BaseRouter):
     """
     
     def __init__(self, credentials: RouterCredentials):
-        super().__init__(credentials}
+        super().__init__(credentials)
         self._discovered_devices: List[RouterDevice] = []
     
     @property
@@ -569,7 +569,7 @@ class GenericRouter(BaseRouter):
                 ["ping", "-c", "1", "-W", "2", self.credentials.ip_address],
                 capture_output=True,
                 timeout=5
-            }
+            )
             return result.returncode == 0
         except Exception:
             return False
@@ -579,10 +579,10 @@ class GenericRouter(BaseRouter):
         if not self.is_available():
             raise RouterConnectionError(
                 f"Router at {self.credentials.ip_address} is not reachable"
-            }
-        self._populate_arp_table(}
+            )
+        self._populate_arp_table()
         self._connected = True
-        logger.info(f"Connected to network at {self.credentials.ip_address}"}
+        logger.info(f"Connected to network at {self.credentials.ip_address}")
         return True
     
     def disconnect(self) -> None:
@@ -591,8 +591,8 @@ class GenericRouter(BaseRouter):
     def _populate_arp_table(self) -> None:
         """Ping sweep to populate ARP cache."""
         try:
-            parts = self.credentials.ip_address.split("."}
-            network = ".".join(parts[:3]}
+            parts = self.credentials.ip_address.split(".")
+            network = ".".join(parts[:3])
             
             import concurrent.futures
             
@@ -602,17 +602,17 @@ class GenericRouter(BaseRouter):
                         ["ping", "-c", "1", "-W", "1", ip],
                         capture_output=True,
                         timeout=2
-                    }
+                    )
                 except:
                     pass
             
             # Scan common IP ranges
             with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
                 ips = [f"{network}.{i}" for i in range(1, 254)]
-                executor.map(ping_host, ips}
+                executor.map(ping_host, ips)
                 
         except Exception as e:
-            logger.debug(f"ARP population failed: {e}"}
+            logger.debug(f"ARP population failed: {e}")
     
     def get_connected_devices(self) -> List[RouterDevice]:
         """Get devices from ARP table with MAC OUI and reverse DNS."""
@@ -624,23 +624,23 @@ class GenericRouter(BaseRouter):
                 capture_output=True,
                 text=True,
                 timeout=10
-            }
+            )
             
-            parts = self.credentials.ip_address.split("."}
-            router_network = ".".join(parts[:3]}
+            parts = self.credentials.ip_address.split(".")
+            router_network = ".".join(parts[:3])
             router_ip = self.credentials.ip_address
             
-            seen_macs = set(}
+            seen_macs = set()
             
             for line in result.stdout.split("\n"):
                 match = re.match(
                     r'(\d+\.\d+\.\d+\.\d+)\s+\w+\s+\w+\s+lladdr\s+([0-9a-fA-F:]+)',
                     line
-                }
+                )
                 
                 if match:
-                    ip = match.group(1}
-                    mac = match.group(2).lower().replace("-", ":"}
+                    ip = match.group(1)
+                    mac = match.group(2).lower().replace("-", ":")
                     
                     if not ip.startswith(router_network):
                         continue
@@ -648,29 +648,29 @@ class GenericRouter(BaseRouter):
                         continue
                     if mac in seen_macs:
                         continue
-                    seen_macs.add(mac}
+                    seen_macs.add(mac)
                     
                     # ENHANCED: Get vendor, device type, and name
-                    vendor = get_vendor_from_mac(mac}
-                    device_type = get_device_type_from_mac(mac, vendor}
-                    hostname = get_device_name(mac, ip, vendor}
+                    vendor = get_vendor_from_mac(mac)
+                    device_type = get_device_type_from_mac(mac, vendor)
+                    hostname = get_device_name(mac, ip, vendor)
                     
-                    device = {
-                        "mac_address": mac,
-                        "ip_address": ip,
-                        "hostname": hostname,
-                        "vendor": vendor,
+                    device = RouterDevice(
+                        mac_address=mac,
+                        ip_address=ip,
+                        hostname=hostname,
+                        vendor=vendor,
                         connection_type="unknown",
                         is_online="REACHABLE" in line or "STALE" in line,
-                        "last_seen": datetime.now(),
-                        "device_type": device_type,
-                    }
+                        last_seen=datetime.now(),
+                        device_type=device_type,
+                    )
                     devices.append(device)
             
-            logger.info(f"Found {len(devices)} devices via ARP with enhanced identification"}
+            logger.info(f"Found {len(devices)} devices via ARP with enhanced identification")
             
         except Exception as e:
-            logger.error(f"ARP scan failed: {e}"}
+            logger.error(f"ARP scan failed: {e}")
         
         return devices
     
@@ -682,7 +682,7 @@ class GenericRouter(BaseRouter):
             is_reachable=self.is_available(),
             supports_api=False,
             discovery_method="arp_with_enhanced_oui_dns"
-        }
+        )
         
         try:
             result = subprocess.run(
@@ -690,10 +690,10 @@ class GenericRouter(BaseRouter):
                 capture_output=True,
                 text=True,
                 timeout=5
-            }
-            match = re.search(r'lladdr\s+([0-9a-fA-F:]+)', result.stdout}
+            )
+            match = re.search(r'lladdr\s+([0-9a-fA-F:]+)', result.stdout)
             if match:
-                info.mac_address = match.group(1).lower().replace("-", ":"}
+                info.mac_address = match.group(1).lower().replace("-", ":")
                 # Get vendor for router itself
                 info.model = get_vendor_from_mac(info.mac_address) or "Unknown"
         except Exception:
