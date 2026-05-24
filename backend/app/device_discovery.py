@@ -862,8 +862,127 @@ class DeviceDiscoveryService:
         return await asyncio.gather(*tasks)
     
     async def scan_network(self) -> List[DiscoveryResult]:
-        """Scan network for all discoverable devices via UPnP/SSDP."""
-        return await self.upnp.discover()
+        """Scan network for all discoverable devices via multiple protocols.
+        
+        Combines UPnP/SSDP, mDNS/Bonjour, NetBIOS, and SNMP discovery
+        for maximum device coverage.
+        """
+        all_results = []
+        discovered_ips = {}
+        
+        logger.info("Starting multi-protocol network scan...")
+        
+        # 1. UPnP/SSDP discovery
+        try:
+            logger.debug("Starting UPnP discovery...")
+            upnp_results = await self.upnp.discover()
+            for result in upnp_results:
+                if result.ip and result.ip not in discovered_ips:
+                    discovered_ips[result.ip] = result
+                    all_results.append(result)
+            logger.info(f"UPnP discovered {len(upnp_results)} devices")
+        except Exception as e:
+            logger.warning(f"UPnP discovery failed: {e}")
+        
+        # 2. mDNS/Bonjour discovery
+        try:
+            logger.debug("Starting mDNS discovery...")
+            mdns_results = await self.mdns.discover()
+            for result in mdns_results:
+                if result.ip:
+                    if result.ip in discovered_ips:
+                        existing = discovered_ips[result.ip]
+                        if result.hostname:
+                            existing.hostname = result.hostname
+                        if result.device_name:
+                            existing.device_name = result.device_name
+                        if result.vendor:
+                            existing.vendor = result.vendor
+                        if result.services:
+                            existing.services.extend(result.services)
+                        existing.confidence = min(1.0, existing.confidence + 0.1)
+                    else:
+                        discovered_ips[result.ip] = result
+                        all_results.append(result)
+            logger.info(f"mDNS discovered {len(mdns_results)} devices")
+        except Exception as e:
+            logger.warning(f"mDNS discovery failed: {e}")
+        
+        # 3. NetBIOS discovery
+        try:
+            logger.debug("Starting NetBIOS discovery...")
+            netbios_results = await self.netbios.discover()
+            for result in netbios_results:
+                if result.ip:
+                    if result.ip in discovered_ips:
+                        existing = discovered_ips[result.ip]
+                        if result.hostname:
+                            existing.hostname = result.hostname
+                        if result.device_name:
+                            existing.device_name = result.device_name
+                        existing.confidence = min(1.0, existing.confidence + 0.1)
+                    else:
+                        discovered_ips[result.ip] = result
+                        all_results.append(result)
+            logger.info(f"NetBIOS discovered {len(netbios_results)} devices")
+        except Exception as e:
+            logger.warning(f"NetBIOS discovery failed: {e}")
+        
+        # 4. SNMP discovery
+        try:
+            logger.debug("Starting SNMP discovery...")
+            snmp_results = await self._snmp_network_scan()
+            for result in snmp_results:
+                if result.ip:
+                    if result.ip in discovered_ips:
+                        existing = discovered_ips[result.ip]
+                        if result.hostname:
+                            existing.hostname = result.hostname
+                        if result.vendor:
+                            existing.vendor = result.vendor
+                        if result.model:
+                            existing.model = result.model
+                        existing.confidence = min(1.0, existing.confidence + 0.15)
+                    else:
+                        discovered_ips[result.ip] = result
+                        all_results.append(result)
+            logger.info(f"SNMP discovered {len(snmp_results)} devices")
+        except Exception as e:
+            logger.warning(f"SNMP discovery failed: {e}")
+        
+        logger.info(f"Multi-protocol scan complete: {len(all_results)} total devices")
+        return all_results
+    
+    async def _snmp_network_scan(self) -> List[DiscoveryResult]:
+        """Scan common network ranges for SNMP-responsive devices."""
+        results = []
+        networks = ["192.168.50", "192.168.1", "192.168.0", "10.0.0"]
+        targets = []
+        for net in networks:
+            for host in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 254]:
+                targets.append(f"{net}.{host}")
+        
+        semaphore = asyncio.Semaphore(10)
+        
+        async def scan_with_limit(ip):
+            async with semaphore:
+                try:
+                    return await asyncio.wait_for(
+                        self.snmp.query_device(ip),
+                        timeout=3.0
+                    )
+                except asyncio.TimeoutError:
+                    return None
+                except Exception:
+                    return None
+        
+        tasks = [scan_with_limit(ip) for ip in targets]
+        scan_results = await asyncio.gather(*tasks)
+        
+        for result in scan_results:
+            if result:
+                results.append(result)
+        return results
     
     def _aggregate_results(self, ip: str, mac: Optional[str], 
                           results: List[DiscoveryResult]) -> EnrichedDevice:
