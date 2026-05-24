@@ -13,8 +13,8 @@ from sqlalchemy.orm import sessionmaker, Session
 Base = declarative_base()
 
 # Database setup - use environment variable or default
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./vigil_security.db")
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_PATH = os.getenv("DATABASE_PATH", "sqlite:///./vigil_security.db")
+engine = create_engine(DATABASE_PATH, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
