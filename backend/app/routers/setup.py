@@ -193,7 +193,7 @@ def discover_routers():
 
 
 @router.post("/setup/connect", response_model=ConnectResponse)
-def connect_router(credentials: RouterCredentials, db: Session = Depends(get_db)):
+def connect_router(credentials: RouterCredentialsInput, db: Session = Depends(get_db)):
     """
     Connect to network and discover devices via ARP scanning.
     
