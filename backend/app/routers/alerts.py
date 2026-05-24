@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 import sqlite3
 from datetime import datetime, timedelta
 
-router = APIRouter(prefix="/api/alerts", tags=["alerts"])
+router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 # Database path
 DB_PATH = "/home/erik-ross/projects/vigil-home/vigil.db"
