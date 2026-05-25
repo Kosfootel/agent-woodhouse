@@ -564,3 +564,15 @@ def get_attr(obj, key, default=None):
     elif isinstance(obj, dict):
         return obj.get(key, default)
     return default
+
+# ============ Router Credential Setup (New) ============
+
+from typing import Dict
+
+
+# Include router credential endpoints from separate module
+try:
+    from . import setup_router_credentials
+    router.include_router(setup_router_credentials.router)
+except Exception as e:
+    logger.warning(f"Could not include router credentials module: {e}")

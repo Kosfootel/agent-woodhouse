@@ -6,6 +6,7 @@ from app.routers.alerts import router as alerts_router
 from app.routers.devices import router as devices_router
 from app.routers.discovery_scan import router as discovery_scan_router
 from app.routers.admin import router as admin_router
+from app.routers.agents import router as agents_router
 
 app = FastAPI(title="Vigil Home API", version="1.0.0")
 
@@ -25,6 +26,7 @@ app.include_router(alerts_router)
 app.include_router(devices_router)
 app.include_router(discovery_scan_router)
 app.include_router(admin_router)
+app.include_router(agents_router)
 
 @app.get("/")
 async def root():
@@ -35,6 +37,7 @@ async def root():
             "/api/devices",
             "/api/alerts", 
             "/api/events",
+            "/api/agents",
             "/api/discovery/scan",
             "/api/reset",
             "/api/health"

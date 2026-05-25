@@ -1,0 +1,128 @@
+/* Router Discovery Step Styles */
+
+.router-discovery-step {
+  text-align: center;
+}
+
+.router-discovery-step h2 {
+  margin-bottom: 0.5rem;
+}
+
+.router-discovery-step > p {
+  color: #94a3b8;
+  margin-bottom: 1.5rem;
+}
+
+/* Discovery Prompt */
+.discovery-prompt {
+  margin: 2rem 0;
+}
+
+.discovery-prompt p {
+  color: #e2e8f0;
+  margin-bottom: 1.5rem;
+}
+
+/* Router List */
+.router-list {
+  text-align: left;
+  margin: 1.5rem 0;
+}
+
+.router-list h3 {
+  color: #fff;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+}
+
+/* Router Card */
+.router-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #0f172a;
+  border: 2px solid #334155;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.router-card:hover {
+  border-color: #475569;
+  background-color: #1e293b;
+}
+
+.router-card.selected {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.router-card .router-icon {
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #334155;
+  border-radius: 8px;
+}
+
+.router-card.selected .router-icon {
+  background-color: #3b82f6;
+}
+
+.router-card .router-info {
+  flex: 1;
+}
+
+.router-card .router-ip {
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.router-card .router-type {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Recommended Badge */
+.recommended-badge {
+  background-color: #22c55e;
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Confidence Bar */
+.confidence-bar {
+  width: 100%;
+  height: 4px;
+  background-color: #334155;
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Large Button */
+.btn-large {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+}

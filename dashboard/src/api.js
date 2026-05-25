@@ -29,7 +29,20 @@ export const getMemoryAccess = () => {
   return api.get('/api/security/memory-access');
 };
 
-// Anomaly alerts
+// Alerts (main alert endpoint)
+export const getAlerts = () => {
+  return api.get('/api/alerts');
+};
+
+export const acknowledgeAlert = (id) => {
+  return api.post(`/api/alerts/${id}/acknowledge`);
+};
+
+export const acknowledgeAllAlerts = () => {
+  return api.post('/api/alerts/acknowledge-all');
+};
+
+// Legacy anomaly alerts (deprecated)
 export const getAnomalies = () => {
   return api.get('/api/security/anomalies');
 };
