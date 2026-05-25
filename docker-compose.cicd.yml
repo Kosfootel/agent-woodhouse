@@ -1,0 +1,72 @@
+# Docker Compose for CI/CD deployments
+# Uses GitHub Container Registry images instead of local builds
+# Deployed on GX-10 (192.168.50.30)
+
+services:
+  backend:
+    image: ${REGISTRY:-ghcr.io}/${REPO_OWNER:-Kosfootel}/agent-woodhouse-backend:${IMAGE_TAG:-latest}
+    container_name: vigil-backend
+    hostname: backend
+    network_mode: host  # Use host network for ARP scanning
+    environment:
+      - VIGIL_ENV=production
+      - DATABASE_PATH=/app/data/vigil.db
+      - POLICY_PATH=/app/policy.yaml
+      - PORT=8000
+      - HOST=0.0.0.0
+    volumes:
+      - ./backend/data:/app/data:rw
+      - ./backend/policy.yaml:/app/policy.yaml:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard:
+    image: ${REGISTRY:-ghcr.io}/${REPO_OWNER:-Kosfootel}/agent-woodhouse-dashboard:${IMAGE_TAG:-latest}
+    container_name: vigil-dashboard
+    network_mode: host
+    hostname: dashboard
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8085/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default:
+    driver: bridge
