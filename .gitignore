@@ -1,20 +1,49 @@
+# === CREDENTIALS & SECRETS ===
+credentials/
+*.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+id_*
+!id_*.pub
+secrets/
+config/secrets/
 
-# Python
-__pycache__/
-*.py[cod]
-*.class
-*.so
-.Python
-venv/
-ENV/
-env/
+# === RUNTIME DATA ===
+memory/
+logs/
+*.log
+.openclaw/workspace-state.json
+.openclaw/
+palace/
 
-# Databases
-*.db
-*.sqlite
-*.sqlite3
-
-# Node
+# === NODE / PYTHON ===
 node_modules/
+__pycache__/
+*.pyc
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
 dist/
 build/
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# === TEMP / BACKUP ===
+tmp/
+temp/
+*.tmp
+*.bak
+*.old
+archive/old-fixes/

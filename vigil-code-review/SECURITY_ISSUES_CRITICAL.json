@@ -1,0 +1,186 @@
+[
+  {
+    "file": "projects/vigil-home/poc-backend/docker-compose.yml",
+    "line": 23,
+    "severity": "critical",
+    "cve": null,
+    "issue": "Hardcoded Gmail credentials (GMAIL_USER and GMAIL_APP_PASSWORD) exposed in version control",
+    "remediation": "1. Immediately rotate the exposed Gmail app password in Google Account settings. 2. Move credentials to .env file excluded from .gitignore. 3. Use Docker secrets or external vault for production."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/docker-compose.yml",
+    "line": 38,
+    "severity": "critical",
+    "cve": null,
+    "issue": "Hardcoded Gmail app password repeated in email-poller service configuration",
+    "remediation": "Remove hardcoded password and reference external secret. Use environment file or Docker secrets."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 47,
+    "severity": "critical",
+    "cve": null,
+    "issue": "JWT secret auto-generation with race condition - file existence checked before write, permissions set after",
+    "remediation": "Remove auto-generation. Require explicit VIGIL_JWT_SECRET or VIGIL_JWT_SECRET_FILE environment variable. If file used, verify ownership and permissions before reading."
+  },
+  {
+    "file": "backend/main.py",
+    "line": 14,
+    "severity": "critical",
+    "cve": null,
+    "issue": "CORS allow_origins=['*'] combined with allow_credentials=True - allows any website to make authenticated cross-origin requests",
+    "remediation": "Replace wildcard with explicit allowed origins from environment variable. Never use allow_credentials=True with wildcard origins."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/vault/vault_encryption.py",
+    "line": 58,
+    "severity": "high",
+    "cve": null,
+    "issue": "Static salt (b'vigil-credential-vault-v1') used for PBKDF2 key derivation - enables rainbow table attacks",
+    "remediation": "Use random per-credential salt stored alongside encrypted data. Salt should be unique for each encryption operation."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/device_discovery.py",
+    "line": 158,
+    "severity": "high",
+    "cve": null,
+    "issue": "Command injection via subprocess - user-controlled IP address passed to avahi-browse subprocess without validation",
+    "remediation": "Validate IP addresses using ipaddress module before subprocess execution. Reject non-private IPs and invalid formats."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/device_discovery.py",
+    "line": 276,
+    "severity": "high",
+    "cve": null,
+    "issue": "Command injection via nmblookup subprocess - user-controlled IP passed to command",
+    "remediation": "Implement strict IP validation using ipaddress.ip_address() and reject shell metacharacters."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/device_discovery.py",
+    "line": 341,
+    "severity": "high",
+    "cve": null,
+    "issue": "Command injection via snmpget subprocess - user-controlled IP in command arguments",
+    "remediation": "Validate IP address format and ensure it's within private ranges before subprocess execution."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/device_discovery.py",
+    "line": 550,
+    "severity": "high",
+    "cve": null,
+    "issue": "XML External Entity (XXE) vulnerability - ET.fromstring() parses XML without security configuration",
+    "remediation": "Replace with defusedxml.ElementTree or configure XMLParser with resolve_entities=False and forbid_external=True."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 32,
+    "severity": "high",
+    "cve": null,
+    "issue": "VIGIL_AUTH_DISABLED environment variable can completely bypass authentication in production",
+    "remediation": "Add check to prevent AUTH_DISABLED=True when VIGIL_ENV=production. Log critical warning if attempted."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 180,
+    "severity": "high",
+    "cve": null,
+    "issue": "JWT token transmitted via URL query parameter (?token=) - exposes token in logs, referer, browser history",
+    "remediation": "Use cookie-based authentication with HttpOnly, Secure, SameSite=Strict flags for SSE. Implement short-lived token exchange."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/vault/vault_encryption.py",
+    "line": 23,
+    "severity": "high",
+    "cve": null,
+    "issue": "PBKDF2 iteration count (100000) below OWASP 2023 recommendation (600000 minimum)",
+    "remediation": "Increase PBKDF2_ITERATIONS to 600000 or migrate to Argon2id for better security."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 313,
+    "severity": "medium",
+    "cve": null,
+    "issue": "API keys hashed with SHA-256 (fast hash) instead of slow hash like Argon2id",
+    "remediation": "Use Argon2id with time_cost=3, memory_cost=65536 for API key hashing."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/Dockerfile",
+    "line": 1,
+    "severity": "high",
+    "cve": null,
+    "issue": "Container runs as root - no USER instruction in Dockerfile",
+    "remediation": "Add 'RUN useradd -m -u 1000 vigil && chown -R vigil:vigil /app /data' and 'USER vigil' before CMD."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/models.py",
+    "line": 1,
+    "severity": "medium",
+    "cve": null,
+    "issue": "No SQL injection protection on JSON path queries in Event.details access",
+    "remediation": "Ensure JSON path keys are from allowed list. Sanitize any user-controlled JSON keys."
+  },
+  {
+    "file": "dashboard/public/index.html",
+    "line": 1,
+    "severity": "medium",
+    "cve": null,
+    "issue": "Missing Content Security Policy (CSP) headers - vulnerable to XSS",
+    "remediation": "Add CSP meta tag or configure reverse proxy headers: Content-Security-Policy, X-Frame-Options, X-Content-Type-Options."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/main.py",
+    "line": 390,
+    "severity": "medium",
+    "cve": null,
+    "issue": "No input validation on BaselineRequest - MAC, IP, hostname stored without validation",
+    "remediation": "Add Pydantic validators for MAC address format, IP address format, and hostname restrictions."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 228,
+    "severity": "medium",
+    "cve": null,
+    "issue": "No rate limiting on token refresh endpoint - susceptible to enumeration attacks",
+    "remediation": "Add @limiter.limit('10/minute') decorator. Use constant-time comparison for token hashes."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/main.py",
+    "line": 42,
+    "severity": "medium",
+    "cve": null,
+    "issue": "Hardcoded internal IP addresses (192.168.50.30) in CORS configuration",
+    "remediation": "Load allowed origins from environment variable VIGIL_CORS_ORIGINS."
+  },
+  {
+    "file": "dashboard/src/App.js",
+    "line": 36,
+    "severity": "medium",
+    "cve": null,
+    "issue": "Hardcoded API endpoint IP address in frontend code",
+    "remediation": "Use environment variable for API URL. Ensure REACT_APP_API_URL is set at build time."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/auth.py",
+    "line": 34,
+    "severity": "low",
+    "cve": null,
+    "issue": "JWT uses HS256 (symmetric) algorithm - key compromise allows token forgery",
+    "remediation": "Consider migrating to RS256 (asymmetric) with separate signing and verification keys."
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/app/database.py",
+    "line": 12,
+    "severity": "low",
+    "cve": null,
+    "issue": "SQLite database permissions not explicitly set",
+    "remediation": "Set umask before creating database directory and files. Ensure 0o600 permissions on database file."
+  },
+  {
+    "file": ".github/workflows/dashboard-deploy.yml",
+    "line": 1,
+    "severity": "low",
+    "cve": null,
+    "issue": "SSH key stored in GitHub secrets - consider OIDC for cloud deployments",
+    "remediation": "Use OpenID Connect (OIDC) for authentication instead of long-lived SSH keys where possible."
+  }
+]

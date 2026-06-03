@@ -1,0 +1,124 @@
+{
+  "description": "Sample event data for testing Vigil Dashboard event API",
+  "version": "1.0",
+  "events": [
+    {
+      "id": 1,
+      "device_id": 1,
+      "event_type": "device_joined",
+      "timestamp": "2026-05-20T08:00:00Z",
+      "details": {
+        "ip": "192.168.1.10",
+        "mac": "AA:BB:CC:DD:EE:01",
+        "hostname": "iPhone-John"
+      }
+    },
+    {
+      "id": 2,
+      "device_id": 2,
+      "event_type": "device_joined",
+      "timestamp": "2026-05-20T08:00:00Z",
+      "details": {
+        "ip": "192.168.1.11",
+        "mac": "AA:BB:CC:DD:EE:02",
+        "hostname": "MacBook-Pro"
+      }
+    },
+    {
+      "id": 3,
+      "device_id": 4,
+      "event_type": "device_joined",
+      "timestamp": "2026-05-25T20:00:00Z",
+      "details": {
+        "ip": "192.168.1.30",
+        "mac": "AA:BB:CC:DD:EE:04",
+        "hostname": "Unknown"
+      }
+    },
+    {
+      "id": 4,
+      "device_id": 4,
+      "event_type": "device_blocked",
+      "timestamp": "2026-05-25T22:00:00Z",
+      "details": {
+        "reason": "suspicious_activity",
+        "triggered_alerts": [1]
+      }
+    },
+    {
+      "id": 5,
+      "device_id": null,
+      "event_type": "alert_triggered",
+      "timestamp": "2026-05-26T03:00:00Z",
+      "details": {
+        "alert_id": 4,
+        "severity": "medium",
+        "alert_type": "policy_violation"
+      }
+    },
+    {
+      "id": 6,
+      "device_id": null,
+      "event_type": "scan_complete",
+      "timestamp": "2026-05-26T04:00:00Z",
+      "details": {
+        "scan_type": "scheduled",
+        "devices_found": 10,
+        "devices_blocked": 1,
+        "duration_seconds": 245
+      }
+    },
+    {
+      "id": 7,
+      "device_id": 1,
+      "event_type": "device_updated",
+      "timestamp": "2026-05-25T12:00:00Z",
+      "details": {
+        "updated_fields": ["nickname"],
+        "old_nickname": "John's iPhone",
+        "new_nickname": "John's Phone"
+      }
+    },
+    {
+      "id": 8,
+      "device_id": 5,
+      "event_type": "device_joined",
+      "timestamp": "2026-05-24T15:00:00Z",
+      "details": {
+        "ip": "192.168.1.40",
+        "mac": "AA:BB:CC:DD:EE:05",
+        "hostname": "Suspicious-Device"
+      }
+    },
+    {
+      "id": 9,
+      "device_id": 5,
+      "event_type": "device_left",
+      "timestamp": "2026-05-24T18:00:00Z",
+      "details": {
+        "reason": "quarantined",
+        "offline_duration_hours": 0.5
+      }
+    },
+    {
+      "id": 10,
+      "device_id": 6,
+      "event_type": "device_joined",
+      "timestamp": "2026-05-22T12:00:00Z",
+      "details": {
+        "ip": "192.168.1.50",
+        "mac": "AA:BB:CC:DD:EE:06",
+        "hostname": "Echo-Dot"
+      }
+    }
+  ],
+  "event_types": [
+    "device_joined",
+    "device_left",
+    "device_blocked",
+    "device_unblocked",
+    "alert_triggered",
+    "scan_complete",
+    "device_updated"
+  ]
+}

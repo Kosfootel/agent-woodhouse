@@ -1,0 +1,141 @@
+{
+  "description": "Sample alert data for testing Vigil Dashboard alert management API",
+  "version": "1.0",
+  "alerts": [
+    {
+      "id": 1,
+      "device_id": 4,
+      "severity": "critical",
+      "alert_type": "unauthorized_access",
+      "title": "Unauthorized access attempt detected",
+      "narrative": "Multiple failed login attempts detected from device 192.168.1.30. Potential brute force attack.",
+      "acknowledged": false,
+      "timestamp": "2026-05-26T09:00:00Z",
+      "metadata": {
+        "attempt_count": 15,
+        "source_port": 22,
+        "target_service": "ssh"
+      }
+    },
+    {
+      "id": 2,
+      "device_id": 5,
+      "severity": "high",
+      "alert_type": "anomaly_detected",
+      "title": "Unusual network traffic pattern",
+      "narrative": "Device is communicating with external servers at an unusually high rate.",
+      "acknowledged": false,
+      "timestamp": "2026-05-26T08:30:00Z",
+      "metadata": {
+        "connections_per_minute": 450,
+        "unique_destinations": 87,
+        "data_volume_mb": 1250
+      }
+    },
+    {
+      "id": 3,
+      "device_id": null,
+      "severity": "high",
+      "alert_type": "threat_detected",
+      "title": "Malicious domain contacted",
+      "narrative": "DNS query detected for known malicious domain: evil-c2-server.example.com",
+      "acknowledged": true,
+      "timestamp": "2026-05-26T07:00:00Z",
+      "acknowledged_at": "2026-05-26T07:15:00Z",
+      "acknowledged_by": "admin",
+      "metadata": {
+        "domain": "evil-c2-server.example.com",
+        "threat_intel_source": "Abuse.ch"
+      }
+    },
+    {
+      "id": 4,
+      "device_id": 3,
+      "severity": "medium",
+      "alert_type": "policy_violation",
+      "title": "Device operating outside allowed hours",
+      "narrative": "Smart TV is active during restricted hours (02:00-04:00).",
+      "acknowledged": false,
+      "timestamp": "2026-05-26T03:00:00Z",
+      "metadata": {
+        "policy_name": "device_hours",
+        "violation_time": "03:15:00"
+      }
+    },
+    {
+      "id": 5,
+      "device_id": 6,
+      "severity": "low",
+      "alert_type": "anomaly_detected",
+      "title": "Unusual DNS query pattern",
+      "narrative": "Device making DNS queries for domains not seen in baseline.",
+      "acknowledged": true,
+      "timestamp": "2026-05-25T14:00:00Z",
+      "acknowledged_at": "2026-05-25T14:30:00Z",
+      "acknowledged_by": "admin",
+      "metadata": {
+        "new_domains": ["tracker-new.example.com", "analytics-new.example.net"],
+        "baseline_deviation": 0.15
+      }
+    },
+    {
+      "id": 6,
+      "device_id": null,
+      "severity": "critical",
+      "alert_type": "threat_detected",
+      "title": "Port scanning activity detected",
+      "narrative": "Sequential port scan detected from external IP targeting internal network.",
+      "acknowledged": false,
+      "timestamp": "2026-05-26T06:00:00Z",
+      "metadata": {
+        "source_ip": "203.0.113.45",
+        "ports_scanned": "1-1024",
+        "scan_type": "SYN"
+      }
+    },
+    {
+      "id": 7,
+      "device_id": 2,
+      "severity": "medium",
+      "alert_type": "policy_violation",
+      "title": "Software update required",
+      "narrative": "Device has not received security updates in 30+ days.",
+      "acknowledged": false,
+      "timestamp": "2026-05-25T10:00:00Z",
+      "metadata": {
+        "last_update": "2026-04-20T00:00:00Z",
+        "days_overdue": 36
+      }
+    },
+    {
+      "id": 8,
+      "device_id": null,
+      "severity": "low",
+      "alert_type": "system",
+      "title": "Daily security scan completed",
+      "narrative": "Scheduled security scan completed with no critical findings.",
+      "acknowledged": true,
+      "timestamp": "2026-05-26T04:00:00Z",
+      "acknowledged_at": "2026-05-26T04:00:00Z",
+      "acknowledged_by": "system",
+      "metadata": {
+        "scan_duration_seconds": 245,
+        "devices_scanned": 10,
+        "findings_count": 0
+      }
+    }
+  ],
+  "edge_cases": {
+    "invalid_severities": ["urgent", "info", "CRITICAL", ""],
+    "invalid_alert_types": ["unknown_type", "", 123],
+    "long_titles": [
+      "A" * 501,
+      "A" * 1000
+    ],
+    "xss_payloads": [
+      "<script>alert('xss')</script>",
+      "<img src=x onerror=alert('xss')>",
+      "javascript:alert('xss')"
+    ]
+  }
+}

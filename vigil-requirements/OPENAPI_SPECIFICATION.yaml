@@ -1,0 +1,1943 @@
+openapi: 3.1.0
+info:
+  title: Vigil Dashboard API
+  description: |
+    Vigil Dashboard API - A security-focused home network monitoring system.
+    
+    ## Authentication
+    This API uses Bearer token authentication for all endpoints. Include the token in the Authorization header:
+    ```
+    Authorization: Bearer <your-jwt-token>
+    ```
+    
+    ## Security Considerations
+    - All requests must include proper CSRF tokens for state-changing operations
+    - Rate limiting is enforced: 100 requests per minute per IP
+    - Sensitive data is encrypted at rest and in transit
+    
+  version: 2.0.0
+  contact:
+    name: Vigil Security Team
+    email: security@vigil.local
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/v2
+    description: Local development server
+  - url: https://api.vigil.local/api/v2
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - CsrfToken: []
+
+tags:
+  - name: Health
+    description: Health check and service status
+  - name: Devices
+    description: Network device management and containment
+  - name: Alerts
+    description: Security alerts and notifications
+  - name: Events
+    description: Activity events and timeline
+  - name: Security
+    description: Security scanning, logging, and anomaly detection
+  - name: Statistics
+    description: Dashboard statistics and metrics
+  - name: Setup
+    description: Initial setup and configuration
+  - name: Agents
+    description: Mesh agent management
+
+paths:
+  # Health & Status
+  /:
+    get:
+      tags:
+        - Health
+      summary: Service root
+      description: Returns basic service information
+      security: []
+      responses:
+        "200":
+          description: Service information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceInfo"
+              example:
+                service: Vigil Security
+                tier: A (MVP)
+                status: operational
+                version: "2.0.0"
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Detailed health status of all components
+      security: []
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # Devices
+  /devices:
+    get:
+      tags:
+        - Devices
+      summary: List devices
+      description: Get all network devices with optional filtering
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [observing, blocked, trusted, quarantined]
+          description: Filter by containment status
+        - name: search
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: Search by MAC, IP, hostname, or nickname
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of results
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of results to skip
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /devices/{deviceId}:
+    get:
+      tags:
+        - Devices
+      summary: Get device
+      description: Get detailed information about a specific device
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Device ID
+      responses:
+        "200":
+          description: Device details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags:
+        - Devices
+      summary: Update device
+      description: Update device nickname, hostname, or type
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpdateRequest"
+      responses:
+        "200":
+          description: Device updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceUpdateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /devices/{deviceId}/block:
+    post:
+      tags:
+        - Devices
+      summary: Block device
+      description: Block a device from network access
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Device blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /devices/{deviceId}/unblock:
+    post:
+      tags:
+        - Devices
+      summary: Unblock device
+      description: Restore network access for a blocked device
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Device unblocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /devices/{deviceId}/trust:
+    post:
+      tags:
+        - Devices
+      summary: Trust device
+      description: Mark device as trusted with elevated trust score
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Device trusted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  trust_score:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 100
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Alerts
+  /alerts:
+    get:
+      tags:
+        - Alerts
+      summary: List alerts
+      description: Get security alerts with optional filtering
+      parameters:
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+          description: Filter by severity level
+        - name: acknowledged
+          in: query
+          schema:
+            type: boolean
+          description: Filter by acknowledged status
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of alerts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertsListResponse"
+
+  /alerts/{alertId}:
+    get:
+      tags:
+        - Alerts
+      summary: Get alert
+      description: Get detailed information about a specific alert
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /alerts/{alertId}/acknowledge:
+    post:
+      tags:
+        - Alerts
+      summary: Acknowledge alert
+      description: Mark an alert as acknowledged
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Alert acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: acknowledged
+                  alert_id:
+                    type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /alerts/acknowledge-all:
+    post:
+      tags:
+        - Alerts
+      summary: Acknowledge all alerts
+      description: Mark all unacknowledged alerts as acknowledged
+      responses:
+        "200":
+          description: All alerts acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: acknowledged
+                  count:
+                    type: integer
+                    description: Number of alerts acknowledged
+
+  /alerts/count:
+    get:
+      tags:
+        - Alerts
+      summary: Get alert count
+      description: Get count of unacknowledged alerts
+      responses:
+        "200":
+          description: Alert count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    minimum: 0
+
+  # Events
+  /events:
+    get:
+      tags:
+        - Events
+      summary: List events
+      description: Get activity events with optional filtering
+      parameters:
+        - name: device_id
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Filter by device ID
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            enum: [device_joined, device_left, device_blocked, device_unblocked, alert_triggered, scan_complete, device_updated]
+          description: Filter by event type
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 24
+          description: Only events from last N hours
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventsListResponse"
+
+  /events/{eventId}:
+    get:
+      tags:
+        - Events
+      summary: Get event
+      description: Get detailed information about a specific event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Security
+  /security/scan-prompt:
+    post:
+      tags:
+        - Security
+      summary: Scan prompt for injection
+      description: Scan a prompt for injection attacks and security violations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanPromptRequest"
+      responses:
+        "200":
+          description: Scan result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanPromptResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /security/log-tool:
+    post:
+      tags:
+        - Security
+      summary: Log tool invocation
+      description: Log a tool invocation for security auditing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogToolRequest"
+      responses:
+        "200":
+          description: Log result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogToolResponse"
+
+  /security/log-access:
+    post:
+      tags:
+        - Security
+      summary: Log memory access
+      description: Log file/memory access operations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogAccessRequest"
+      responses:
+        "200":
+          description: Log result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogAccessResponse"
+
+  /security/baseline/{agentId}:
+    get:
+      tags:
+        - Security
+      summary: Get baseline metrics
+      description: Get baseline metrics for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 64
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 168
+            default: 1
+          description: Time window in hours
+      responses:
+        "200":
+          description: Baseline metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineMetrics"
+
+  /security/anomalies:
+    get:
+      tags:
+        - Security
+      summary: List anomalies
+      description: Get detected security anomalies
+      parameters:
+        - name: agent_id
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+        - name: acknowledged
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 50
+      responses:
+        "200":
+          description: List of anomalies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnomalyListResponse"
+
+  /security/anomalies/{anomalyId}/acknowledge:
+    post:
+      tags:
+        - Security
+      summary: Acknowledge anomaly
+      description: Acknowledge a security anomaly
+      parameters:
+        - name: anomalyId
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Anomaly acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acknowledged:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /security/events:
+    get:
+      tags:
+        - Security
+      summary: Get security events
+      description: Get security events from both security tables and events table
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, high, medium, low]
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 50
+      responses:
+        "200":
+          description: Security events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SecurityEventItem"
+
+  /security/blocked-stats:
+    get:
+      tags:
+        - Security
+      summary: Get blocked statistics
+      description: Get statistics on blocked prompts and actions
+      responses:
+        "200":
+          description: Blocked statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockedStats"
+
+  /security/tool-usage:
+    get:
+      tags:
+        - Security
+      summary: Get tool usage
+      description: Get tool usage statistics
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            pattern: "^[0-9]+[hd]$"
+            default: "24h"
+          description: Time period (e.g., 24h, 7d)
+      responses:
+        "200":
+          description: Tool usage statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolUsage"
+
+  /security/memory-access:
+    get:
+      tags:
+        - Security
+      summary: Get memory access stats
+      description: Get memory access statistics for heatmap
+      responses:
+        "200":
+          description: Memory access statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryAccessStats"
+
+  # Statistics
+  /stats:
+    get:
+      tags:
+        - Statistics
+      summary: Get dashboard statistics
+      description: Get overall dashboard statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /stats/events:
+    get:
+      tags:
+        - Statistics
+      summary: Get recent events
+      description: Get recent activity events for statistics
+      parameters:
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+            default: 24
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+      responses:
+        "200":
+          description: Recent events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsEventsResponse"
+
+  # Setup
+  /setup/status:
+    get:
+      tags:
+        - Setup
+      summary: Get setup status
+      description: Check if initial setup is complete
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+
+  /setup/session:
+    post:
+      tags:
+        - Setup
+      summary: Create setup session
+      description: Create a new setup session for tracking progress
+      responses:
+        "200":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+
+  /setup/discover:
+    post:
+      tags:
+        - Setup
+      summary: Discover routers
+      description: Scan network for available routers
+      responses:
+        "200":
+          description: Discovered routers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverResponse"
+
+  /setup/connect:
+    post:
+      tags:
+        - Setup
+      summary: Connect router
+      description: Connect to router and discover devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouterCredentialsInput"
+      responses:
+        "200":
+          description: Connection result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /setup/router-status:
+    get:
+      tags:
+        - Setup
+      summary: Check router setup status
+      description: Check if router credentials are configured
+      parameters:
+        - name: session_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Router status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterStatus"
+
+  /setup/router-credentials:
+    post:
+      tags:
+        - Setup
+      summary: Submit router credentials
+      description: Submit and store router credentials securely
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouterCredentialsInput"
+      responses:
+        "200":
+          description: Credentials stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouterCredentialsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+    delete:
+      tags:
+        - Setup
+      summary: Delete router credentials
+      description: Delete stored router credentials
+      responses:
+        "200":
+          description: Credentials deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+
+  /setup/agents:
+    get:
+      tags:
+        - Setup
+      summary: List agents
+      description: List all registered agents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                  agents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SetupAgent"
+
+  /setup/agent/announce:
+    post:
+      tags:
+        - Setup
+      summary: Announce agent
+      description: Allow agents to self-announce to Vigil
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentAnnouncementInput"
+      responses:
+        "200":
+          description: Agent announced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [created, updated]
+                  device_id:
+                    type: integer
+                  message:
+                    type: string
+
+  # Agents
+  /agents:
+    get:
+      tags:
+        - Agents
+      summary: List agents
+      description: Get all registered mesh agents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsListResponse"
+
+  /agents/{agentId}:
+    get:
+      tags:
+        - Agents
+      summary: Get agent
+      description: Get information about a specific agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentResponse"
+
+  /agents/{agentId}/trust:
+    post:
+      tags:
+        - Agents
+      summary: Toggle agent trust
+      description: Toggle trust status for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Trust status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustResponse"
+
+  /agents/{agentId}/block:
+    post:
+      tags:
+        - Agents
+      summary: Toggle agent block
+      description: Toggle block status for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Block status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrustResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authentication
+    CsrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: CSRF token for state-changing operations
+
+  schemas:
+    # Base Schemas
+    ServiceInfo:
+      type: object
+      required:
+        - service
+        - status
+      properties:
+        service:
+          type: string
+          example: Vigil Security
+        tier:
+          type: string
+          example: A (MVP)
+        status:
+          type: string
+          enum: [operational, degraded, down]
+        version:
+          type: string
+          example: "2.0.0"
+
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        components:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [connected, disconnected]
+            policy:
+              type: string
+              enum: [loaded, error]
+
+    # Device Schemas
+    DeviceResponse:
+      type: object
+      required:
+        - id
+        - mac
+        - ip
+        - trust_score
+        - containment_status
+        - online
+        - last_seen
+        - first_seen
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        mac:
+          type: string
+          pattern: "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+          example: "AA:BB:CC:DD:EE:FF"
+        ip:
+          type: string
+          format: ipv4
+          example: "192.168.1.100"
+        hostname:
+          type: string
+          nullable: true
+          example: "iPhone-John"
+        nickname:
+          type: string
+          nullable: true
+          example: "John's Phone"
+        vendor:
+          type: string
+          nullable: true
+          example: "Apple Inc."
+        device_type:
+          type: string
+          nullable: true
+          enum: [phone, laptop, desktop, tablet, iot, tv, speaker, unknown, agent]
+        trust_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          example: 75.5
+        containment_status:
+          type: string
+          enum: [observing, blocked, trusted, quarantined]
+          example: observing
+        online:
+          type: boolean
+        last_seen:
+          type: string
+          format: date-time
+        first_seen:
+          type: string
+          format: date-time
+
+    DeviceListResponse:
+      type: object
+      required:
+        - devices
+        - total_count
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceResponse"
+        total_count:
+          type: integer
+          minimum: 0
+
+    DeviceUpdateRequest:
+      type: object
+      properties:
+        nickname:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "John's iPhone"
+        hostname:
+          type: string
+          minLength: 1
+          maxLength: 100
+        device_type:
+          type: string
+          enum: [phone, laptop, desktop, tablet, iot, tv, speaker, unknown]
+
+    DeviceUpdateResponse:
+      type: object
+      required:
+        - success
+        - message
+        - device
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+          example: "Device updated successfully"
+        device:
+          $ref: "#/components/schemas/DeviceResponse"
+
+    BlockResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+          example: "Device AA:BB:CC:DD:EE:FF has been blocked"
+
+    # Alert Schemas
+    AlertResponse:
+      type: object
+      required:
+        - id
+        - severity
+        - alert_type
+        - title
+        - acknowledged
+      properties:
+        id:
+          type: integer
+        device_id:
+          type: integer
+          nullable: true
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        alert_type:
+          type: string
+          example: anomaly
+        title:
+          type: string
+          example: "Suspicious activity detected"
+        narrative:
+          type: string
+          nullable: true
+        acknowledged:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+
+    AlertsListResponse:
+      type: object
+      required:
+        - count
+        - alerts
+        - new_count
+        - acknowledged_count
+      properties:
+        count:
+          type: integer
+        alerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertResponse"
+        new_count:
+          type: integer
+          description: Number of unacknowledged alerts
+        acknowledged_count:
+          type: integer
+
+    # Event Schemas
+    EventResponse:
+      type: object
+      required:
+        - id
+        - device_id
+        - event_type
+        - timestamp
+      properties:
+        id:
+          type: integer
+        device_id:
+          type: integer
+        event_type:
+          type: string
+          enum: [device_joined, device_left, device_blocked, device_unblocked, alert_triggered, scan_complete, device_updated]
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object
+          additionalProperties: true
+
+    EventsListResponse:
+      type: object
+      required:
+        - count
+        - events
+      properties:
+        count:
+          type: integer
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventResponse"
+
+    # Security Schemas
+    ScanPromptRequest:
+      type: object
+      required:
+        - agent_id
+        - prompt
+      properties:
+        agent_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: "agent-001"
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          example: "What is the weather today?"
+        source_ip:
+          type: string
+          format: ipv4
+          nullable: true
+
+    ScanPromptResponse:
+      type: object
+      required:
+        - blocked
+        - confidence
+        - matched_patterns
+      properties:
+        blocked:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          example: "Critical pattern detected: ignore_previous"
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.95
+        matched_patterns:
+          type: array
+          items:
+            type: string
+          example: ["ignore_previous", "system_override"]
+
+    LogToolRequest:
+      type: object
+      required:
+        - agent_id
+        - tool_name
+      properties:
+        agent_id:
+          type: string
+        tool_name:
+          type: string
+          example: "file_read"
+        arguments:
+          type: object
+          default: {}
+        result:
+          type: string
+          nullable: true
+        execution_time_ms:
+          type: number
+          nullable: true
+
+    LogToolResponse:
+      type: object
+      required:
+        - logged
+        - blocked
+      properties:
+        logged:
+          type: boolean
+        blocked:
+          type: boolean
+        block_reason:
+          type: string
+          nullable: true
+
+    LogAccessRequest:
+      type: object
+      required:
+        - agent_id
+        - access_type
+        - resource_path
+      properties:
+        agent_id:
+          type: string
+        access_type:
+          type: string
+          enum: [file_read, file_write, memory_read, memory_write]
+        resource_path:
+          type: string
+          example: "/app/data/config.json"
+        content_hash:
+          type: string
+          nullable: true
+        size_bytes:
+          type: integer
+          nullable: true
+
+    LogAccessResponse:
+      type: object
+      required:
+        - logged
+        - sensitivity_level
+        - blocked
+      properties:
+        logged:
+          type: boolean
+        sensitivity_level:
+          type: string
+          enum: [critical, high, medium, low]
+        blocked:
+          type: boolean
+
+    BaselineMetrics:
+      type: object
+      required:
+        - agent_id
+        - prompts_per_hour
+        - tools_per_hour
+        - error_rate
+        - access_rate_per_hour
+        - total_prompts
+        - total_tools
+        - total_access
+      properties:
+        agent_id:
+          type: string
+        prompts_per_hour:
+          type: number
+          format: float
+        tools_per_hour:
+          type: number
+          format: float
+        error_rate:
+          type: number
+          format: float
+        access_rate_per_hour:
+          type: number
+          format: float
+        total_prompts:
+          type: integer
+        total_tools:
+          type: integer
+        total_access:
+          type: integer
+        window_hours:
+          type: integer
+          default: 1
+
+    AnomalyItem:
+      type: object
+      required:
+        - id
+        - agent_id
+        - timestamp
+        - event_type
+        - severity
+        - description
+        - acknowledged
+      properties:
+        id:
+          type: integer
+        agent_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        description:
+          type: string
+        acknowledged:
+          type: boolean
+
+    AnomalyListResponse:
+      type: object
+      required:
+        - anomalies
+        - total_count
+        - unacknowledged_count
+      properties:
+        anomalies:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnomalyItem"
+        total_count:
+          type: integer
+        unacknowledged_count:
+          type: integer
+
+    SecurityEventItem:
+      type: object
+      required:
+        - id
+        - timestamp
+        - agent
+        - eventType
+        - severity
+        - details
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        agent:
+          type: string
+        eventType:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low]
+        details:
+          type: string
+
+    BlockedStats:
+      type: object
+      required:
+        - total
+        - byCategory
+      properties:
+        total:
+          type: integer
+        byCategory:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+              color:
+                type: string
+                pattern: "^#[0-9a-fA-F]{6}$"
+
+    ToolUsage:
+      type: object
+      required:
+        - period
+        - tools
+      properties:
+        period:
+          type: string
+          example: "24h"
+        tools:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              count:
+                type: integer
+
+    MemoryAccessStats:
+      type: object
+      required:
+        - agents
+        - levels
+        - data
+      properties:
+        agents:
+          type: array
+          items:
+            type: string
+        levels:
+          type: array
+          items:
+            type: string
+            enum: [public, internal, confidential, restricted]
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              agent:
+                type: string
+              level:
+                type: string
+              count:
+                type: integer
+
+    # Statistics Schemas
+    DashboardStats:
+      type: object
+      required:
+        - device_count
+        - active_devices
+        - blocked_devices
+        - avg_trust_score
+        - alert_count
+        - unacknowledged_alerts
+        - critical_alerts
+      properties:
+        device_count:
+          type: integer
+        active_devices:
+          type: integer
+        blocked_devices:
+          type: integer
+        avg_trust_score:
+          type: number
+          format: float
+        alert_count:
+          type: integer
+        unacknowledged_alerts:
+          type: integer
+        critical_alerts:
+          type: integer
+
+    StatsEventsResponse:
+      type: object
+      required:
+        - events
+        - total_count
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              device_id:
+                type: integer
+              type:
+                type: string
+              description:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+        total_count:
+          type: integer
+
+    # Setup Schemas
+    SetupStatus:
+      type: object
+      required:
+        - is_setup_complete
+        - router_connected
+        - device_count
+      properties:
+        is_setup_complete:
+          type: boolean
+        router_connected:
+          type: boolean
+        device_count:
+          type: integer
+
+    SessionResponse:
+      type: object
+      required:
+        - session_id
+        - message
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    DiscoverResponse:
+      type: object
+      required:
+        - routers
+      properties:
+        routers:
+          type: array
+          items:
+            type: object
+            required:
+              - ip
+              - type
+            properties:
+              ip:
+                type: string
+                format: ipv4
+              type:
+                type: string
+              model:
+                type: string
+                nullable: true
+              confidence:
+                type: number
+                format: float
+                minimum: 0
+                maximum: 1
+
+    ConnectResponse:
+      type: object
+      required:
+        - success
+        - devices_found
+        - message
+      properties:
+        success:
+          type: boolean
+        devices_found:
+          type: integer
+        message:
+          type: string
+
+    RouterCredentialsInput:
+      type: object
+      required:
+        - router_ip
+        - admin_username
+        - admin_password
+      properties:
+        router_ip:
+          type: string
+          format: ipv4
+          default: "192.168.50.1"
+        admin_username:
+          type: string
+          minLength: 1
+        admin_password:
+          type: string
+          minLength: 1
+        vendor:
+          type: string
+          nullable: true
+
+    RouterCredentialsResponse:
+      type: object
+      required:
+        - status
+        - message
+        - router
+        - next_step
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+        message:
+          type: string
+        router:
+          type: object
+          properties:
+            ip:
+              type: string
+            vendor:
+              type: string
+            model:
+              type: string
+            configured:
+              type: boolean
+        next_step:
+          type: string
+          example: "/setup/complete"
+
+    RouterStatus:
+      type: object
+      required:
+        - configured
+        - router_ip
+        - message
+        - setup_required
+      properties:
+        configured:
+          type: boolean
+        router_ip:
+          type: string
+          format: ipv4
+        vendor:
+          type: string
+          nullable: true
+        message:
+          type: string
+        setup_required:
+          type: boolean
+
+    SetupAgent:
+      type: object
+      required:
+        - id
+        - name
+        - ip
+        - type
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        ip:
+          type: string
+        mac:
+          type: string
+        type:
+          type: string
+        last_seen:
+          type: string
+          format: date-time
+          nullable: true
+
+    AgentAnnouncementInput:
+      type: object
+      required:
+        - name
+        - ip
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        ip:
+          type: string
+          format: ipv4
+        mac:
+          type: string
+          pattern: "^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"
+          nullable: true
+        agent_type:
+          type: string
+          default: mesh
+        capabilities:
+          type: array
+          items:
+            type: string
+
+    # Agent Management Schemas
+    AgentResponse:
+      type: object
+      required:
+        - id
+        - name
+        - status
+        - trust_level
+        - trust_score
+        - is_trusted
+        - is_blocked
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [online, offline, unknown]
+        last_seen:
+          type: string
+          format: date-time
+          nullable: true
+        ip_address:
+          type: string
+          format: ipv4
+          nullable: true
+        version:
+          type: string
+          nullable: true
+        trust_level:
+          type: string
+          enum: [trusted, untrusted, blocked]
+        trust_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        alert_count:
+          type: integer
+        is_trusted:
+          type: boolean
+        is_blocked:
+          type: boolean
+
+    AgentsListResponse:
+      type: object
+      required:
+        - count
+        - agents
+      properties:
+        count:
+          type: integer
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentResponse"
+
+    TrustResponse:
+      type: object
+      required:
+        - agent_id
+        - trust_level
+        - is_trusted
+        - is_blocked
+      properties:
+        agent_id:
+          type: string
+        trust_level:
+          type: string
+        is_trusted:
+          type: boolean
+        is_blocked:
+          type: boolean
+
+    # Error Schemas
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+        error_code:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Invalid request parameters"
+            error_code: BAD_REQUEST
+            timestamp: "2024-01-15T10:30:00Z"
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Invalid or expired token"
+            error_code: UNAUTHORIZED
+            timestamp: "2024-01-15T10:30:00Z"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Resource not found"
+            error_code: NOT_FOUND
+            timestamp: "2024-01-15T10:30:00Z"
+
+    RateLimited:
+      description: Too many requests
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            detail: "Rate limit exceeded"
+            error_code: RATE_LIMITED
+            timestamp: "2024-01-15T10:30:00Z"

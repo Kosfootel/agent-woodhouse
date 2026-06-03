@@ -1,0 +1,104 @@
+{
+  "description": "Sample agent data for testing Vigil Dashboard agent management API",
+  "version": "1.0",
+  "agents": [
+    {
+      "id": "agent-001",
+      "name": "Living Room Agent",
+      "status": "online",
+      "last_seen": "2026-05-26T10:20:00Z",
+      "ip_address": "192.168.1.100",
+      "version": "2.1.0",
+      "trust_level": "trusted",
+      "trust_score": 95,
+      "alert_count": 2,
+      "is_trusted": true,
+      "is_blocked": false,
+      "capabilities": ["file_access", "network_scan", "memory_monitor"],
+      "metadata": {
+        "hostname": "vigil-agent-001",
+        "location": "living_room",
+        "os": "Linux 5.15",
+        "install_date": "2026-05-20T08:00:00Z"
+      }
+    },
+    {
+      "id": "agent-002",
+      "name": "Office Agent",
+      "status": "online",
+      "last_seen": "2026-05-26T10:18:00Z",
+      "ip_address": "192.168.1.101",
+      "version": "2.1.0",
+      "trust_level": "trusted",
+      "trust_score": 88,
+      "alert_count": 1,
+      "is_trusted": true,
+      "is_blocked": false,
+      "capabilities": ["file_access", "memory_monitor"],
+      "metadata": {
+        "hostname": "vigil-agent-002",
+        "location": "office",
+        "os": "Linux 5.15",
+        "install_date": "2026-05-22T10:00:00Z"
+      }
+    },
+    {
+      "id": "agent-003",
+      "name": "Kitchen Agent",
+      "status": "offline",
+      "last_seen": "2026-05-25T22:00:00Z",
+      "ip_address": "192.168.1.102",
+      "version": "2.0.5",
+      "trust_level": "untrusted",
+      "trust_score": 45,
+      "alert_count": 5,
+      "is_trusted": false,
+      "is_blocked": false,
+      "capabilities": ["file_access"],
+      "metadata": {
+        "hostname": "vigil-agent-003",
+        "location": "kitchen",
+        "os": "Linux 5.10",
+        "install_date": "2026-05-23T14:00:00Z",
+        "offline_reason": "heartbeat_timeout"
+      }
+    },
+    {
+      "id": "agent-004",
+      "name": "Suspicious Agent",
+      "status": "error",
+      "last_seen": "2026-05-24T18:00:00Z",
+      "ip_address": "192.168.1.103",
+      "version": "1.9.0",
+      "trust_level": "blocked",
+      "trust_score": 10,
+      "alert_count": 12,
+      "is_trusted": false,
+      "is_blocked": true,
+      "capabilities": [],
+      "metadata": {
+        "hostname": "unknown-agent",
+        "location": "unknown",
+        "os": "Unknown",
+        "install_date": "2026-05-24T15:00:00Z",
+        "block_reason": "multiple_policy_violations"
+      }
+    }
+  ],
+  "edge_cases": {
+    "invalid_ids": [
+      "",
+      "agent with spaces",
+      "agent!@#$%",
+      "a" * 65
+    ],
+    "invalid_ips": [
+      "999.999.999.999",
+      "not-an-ip"
+    ],
+    "long_names": [
+      "A" * 101,
+      "A" * 256
+    ]
+  }
+}

@@ -1,0 +1,298 @@
+[
+  {
+    "file": "api.js",
+    "line": 4,
+    "severity": "critical",
+    "issue": "Hardcoded IP address in API_BASE_URL prevents deployment flexibility and exposes internal network structure",
+    "recommendation": "Use environment variable: const API_BASE_URL = process.env.REACT_APP_API_URL || '/api'",
+    "category": "security"
+  },
+  {
+    "file": "DevicesPage.js",
+    "line": 9,
+    "severity": "critical",
+    "issue": "Hardcoded API URL with IP address in fetch call instead of using centralized api client",
+    "recommendation": "Import and use the centralized api client from '../api' or use environment-configured base URL",
+    "category": "security"
+  },
+  {
+    "file": "AlertsPage.js",
+    "line": 15,
+    "severity": "critical",
+    "issue": "Hardcoded API_URL constant with internal IP address",
+    "recommendation": "Use environment variable: const API_URL = process.env.REACT_APP_API_URL || '/api'",
+    "category": "security"
+  },
+  {
+    "file": "AgentsPage.js",
+    "line": 11,
+    "severity": "critical",
+    "issue": "Hardcoded API_URL constant with internal IP address",
+    "recommendation": "Use environment variable: const API_URL = process.env.REACT_APP_API_URL || '/api'",
+    "category": "security"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 92,
+    "severity": "critical",
+    "issue": "Hardcoded IP in createSetupSession fetch call",
+    "recommendation": "Use environment variable: process.env.REACT_APP_API_URL || '/api'",
+    "category": "security"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 125,
+    "severity": "critical",
+    "issue": "Hardcoded IP in router discovery fetch call",
+    "recommendation": "Use environment variable for API base URL",
+    "category": "security"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 148,
+    "severity": "critical",
+    "issue": "Hardcoded IP in credentials submission fetch call",
+    "recommendation": "Use environment variable for API base URL",
+    "category": "security"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 195,
+    "severity": "critical",
+    "issue": "Hardcoded IP in device scan fetch call",
+    "recommendation": "Use environment variable for API base URL",
+    "category": "security"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 205,
+    "severity": "critical",
+    "issue": "Hardcoded IP in devices fetch call",
+    "recommendation": "Use environment variable for API base URL",
+    "category": "security"
+  },
+  {
+    "file": "App.js",
+    "line": 26,
+    "severity": "high",
+    "issue": "Fallback hardcoded IP address in setup status check",
+    "recommendation": "Use relative URL '/api/setup/status' or environment variable",
+    "category": "security"
+  },
+  {
+    "file": "routerDiscovery.js",
+    "line": 119,
+    "severity": "critical",
+    "issue": "LocalStorage used to persist setup data potentially containing sensitive router credentials",
+    "recommendation": "Remove localStorage persistence for credential data or use sessionStorage and clear on completion",
+    "category": "security"
+  },
+  {
+    "file": "EventTimeline.js",
+    "line": 83,
+    "severity": "high",
+    "issue": "event.details rendered directly without sanitization, potential XSS if backend data is compromised",
+    "recommendation": "Sanitize content before rendering or use a library like DOMPurify for user-generated content",
+    "category": "security"
+  },
+  {
+    "file": "AlertsPage.js",
+    "line": 81,
+    "severity": "high",
+    "issue": "alert.description and alert.narrative rendered directly without sanitization",
+    "recommendation": "Sanitize content before rendering to prevent XSS",
+    "category": "security"
+  },
+  {
+    "file": "AlertPanel.js",
+    "line": 115,
+    "severity": "high",
+    "issue": "alert.narrative and alert.description rendered without sanitization",
+    "recommendation": "Sanitize content before rendering to prevent XSS",
+    "category": "security"
+  },
+  {
+    "file": "api.js",
+    "line": 1,
+    "severity": "high",
+    "issue": "No CSRF protection implemented in API client",
+    "recommendation": "Add CSRF token header to all requests or implement cookie-based protection",
+    "category": "security"
+  },
+  {
+    "file": "DevicesPage.js",
+    "line": 22,
+    "severity": "medium",
+    "issue": "Polling interval creates unnecessary network requests and potential memory leak if component unmounts during fetch",
+    "recommendation": "Add AbortController to fetch or switch to WebSockets for real-time updates",
+    "category": "performance"
+  },
+  {
+    "file": "AlertsPage.js",
+    "line": 26,
+    "severity": "medium",
+    "issue": "10-second polling interval is aggressive and creates unnecessary load",
+    "recommendation": "Implement exponential backoff or switch to Server-Sent Events/WebSockets",
+    "category": "performance"
+  },
+  {
+    "file": "AgentsPage.js",
+    "line": 28,
+    "severity": "medium",
+    "issue": "30-second polling interval may miss important state changes",
+    "recommendation": "Consider WebSocket connection for real-time agent status updates",
+    "category": "performance"
+  },
+  {
+    "file": "AccessHeatmap.js",
+    "line": 50,
+    "severity": "medium",
+    "issue": "filteredData recomputed on every render without memoization",
+    "recommendation": "Use useMemo: const filteredData = useMemo(() => accessData.filter(...), [accessData])",
+    "category": "performance"
+  },
+  {
+    "file": "EventTimeline.js",
+    "line": 20,
+    "severity": "medium",
+    "issue": "fetchEvents dependency array includes filters object which causes effect to run on every render if filters is a new object",
+    "recommendation": "Stringify filters for comparison or use individual filter properties in dependency array",
+    "category": "performance"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 228,
+    "severity": "high",
+    "issue": "Clickable div without keyboard accessibility - not reachable via Tab key",
+    "recommendation": "Change to button element or add tabIndex={0}, onKeyDown handler, and appropriate ARIA attributes",
+    "category": "accessibility"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 298,
+    "severity": "high",
+    "issue": "Form inputs lack proper aria-describedby associations for helper text",
+    "recommendation": "Add id to small elements and aria-describedby to inputs linking to them",
+    "category": "accessibility"
+  },
+  {
+    "file": "AlertPanel.js",
+    "line": 57,
+    "severity": "medium",
+    "issue": "Acknowledge error only logged to console, user not notified of failure",
+    "recommendation": "Add user-visible error notification when acknowledge fails",
+    "category": "error-handling"
+  },
+  {
+    "file": "AlertPanel.js",
+    "line": 65,
+    "severity": "medium",
+    "issue": "Acknowledge all error only logged to console",
+    "recommendation": "Add user-visible error notification",
+    "category": "error-handling"
+  },
+  {
+    "file": "DevicesPage.js",
+    "line": 14,
+    "severity": "medium",
+    "issue": "Fetch error swallowed, user sees empty state instead of error message",
+    "recommendation": "Display error state to user when device fetch fails",
+    "category": "error-handling"
+  },
+  {
+    "file": "EventTimeline.js",
+    "line": 44,
+    "severity": "medium",
+    "issue": "Error state stored but never displayed to users",
+    "recommendation": "Add error UI to show when event fetch fails",
+    "category": "error-handling"
+  },
+  {
+    "file": "index.css",
+    "line": 1,
+    "severity": "medium",
+    "issue": "Global CSS without CSS Modules or scoping - risk of naming collisions",
+    "recommendation": "Migrate to CSS Modules, styled-components, or Tailwind CSS",
+    "category": "maintainability"
+  },
+  {
+    "file": "package.json",
+    "line": 1,
+    "severity": "high",
+    "issue": "Mixed usage of axios and native fetch creates inconsistency",
+    "recommendation": "Standardize on axios (already configured) and update all components to use api client",
+    "category": "maintainability"
+  },
+  {
+    "file": "SetupWizard.js",
+    "line": 1,
+    "severity": "high",
+    "issue": "File exceeds 600 lines - violates single responsibility principle",
+    "recommendation": "Split into smaller components: WizardContainer, StepRenderer, and individual step components",
+    "category": "maintainability"
+  },
+  {
+    "file": "api.js",
+    "line": 6,
+    "severity": "medium",
+    "issue": "No request/response interceptors for error handling or auth token injection",
+    "recommendation": "Add axios interceptors for centralized error handling and token management",
+    "category": "maintainability"
+  },
+  {
+    "file": "Dockerfile",
+    "line": 1,
+    "severity": "high",
+    "issue": "Container runs development server instead of production build",
+    "recommendation": "Use multi-stage build: build with 'npm run build', serve static files with nginx or serve package",
+    "category": "deployment"
+  },
+  {
+    "file": "package.json",
+    "line": 1,
+    "severity": "medium",
+    "issue": "No ESLint configuration beyond react-app defaults",
+    "recommendation": "Add custom ESLint config with security and accessibility rules",
+    "category": "code-quality"
+  },
+  {
+    "file": "package.json",
+    "line": 1,
+    "severity": "medium",
+    "issue": "No test files or testing dependencies configured",
+    "recommendation": "Add @testing-library/react and write tests for critical paths",
+    "category": "code-quality"
+  },
+  {
+    "file": "AlertsPage.js",
+    "line": 44,
+    "severity": "low",
+    "issue": "window.confirm blocks the main thread and creates inconsistent UI",
+    "recommendation": "Use a custom modal component for confirmation dialogs",
+    "category": "ux"
+  },
+  {
+    "file": "App.js",
+    "line": 104,
+    "severity": "low",
+    "issue": "PageWrapper creates 4 nearly identical wrapper components",
+    "recommendation": "Use React Router Outlet pattern with a Layout component",
+    "category": "maintainability"
+  },
+  {
+    "file": "routerDiscovery.js",
+    "line": 28,
+    "severity": "low",
+    "issue": "Router discovery tries HTTP endpoints which may trigger mixed content warnings in HTTPS deployments",
+    "recommendation": "Use relative URLs or wss:// for secure contexts",
+    "category": "security"
+  },
+  {
+    "file": "index.css",
+    "line": 13,
+    "severity": "low",
+    "issue": "Slate-400 on slate-800 color combination may fail WCAG AA contrast requirements for small text",
+    "recommendation": "Run contrast audit and adjust colors to meet WCAG AA standards",
+    "category": "accessibility"
+  }
+]

@@ -1,0 +1,212 @@
+# Vigil Dashboard Integration Test Environment
+# This compose file sets up the complete stack for integration testing
+# Usage: docker-compose -f docker-compose.test.yml up --build --abort-on-container-exit
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vigil-postgres-test
+    environment:
+      POSTGRES_USER: vigil_test
+      POSTGRES_PASSWORD: test_secret_password_123
+      POSTGRES_DB: vigil_test
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil_test -d vigil_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - vigil-test-network
+
+  # Redis for Sessions and Caching
+  redis:
+    image: redis:7-alpine
+    container_name: vigil-redis-test
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_test_data:/data
+    command: redis-server --requirepass redis_test_pass_123 --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_test_pass_123", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - vigil-test-network
+
+  # Backend API
+  backend:
+    build:
+      context: ../../../vigil-dashboard/backend
+      dockerfile: Dockerfile.test
+    container_name: vigil-backend-test
+    environment:
+      # Database Configuration
+      DATABASE_URL: postgresql+asyncpg://vigil_test:test_secret_password_123@postgres:5432/vigil_test
+      # Redis Configuration
+      REDIS_URL: redis://:redis_test_pass_123@redis:6379/0
+      # Security Configuration
+      SECRET_KEY: test_secret_key_for_integration_tests_only
+      SESSION_COOKIE_NAME: vigil_session_test
+      CSRF_COOKIE_NAME: vigil_csrf_test
+      # CORS Configuration
+      VIGIL_CORS_ORIGINS: "http://localhost:3000,http://frontend:3000"
+      # Test Mode
+      VIGIL_TEST_MODE: "true"
+      VIGIL_LOG_LEVEL: DEBUG
+      # SMTP Configuration (Mock)
+      SMTP_HOST: mock-smtp
+      SMTP_PORT: 1025
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      SMTP_TLS: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-smtp:
+        condition: service_started
+    volumes:
+      - test_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - vigil-test-network
+
+  # Frontend (React SPA)
+  frontend:
+    build:
+      context: ../../../vigil-dashboard/frontend
+      dockerfile: Dockerfile.test
+    container_name: vigil-frontend-test
+    environment:
+      REACT_APP_API_URL: http://localhost:8000/api/v2
+      REACT_APP_WS_URL: ws://localhost:8000/api/v2/events/stream
+      NODE_ENV: test
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - vigil-test-network
+
+  # Mock SMTP Server for Email Testing
+  mock-smtp:
+    image: reachfive/fake-smtp-server:latest
+    container_name: vigil-smtp-test
+    ports:
+      - "1025:1025"
+      - "1080:1080"
+    environment:
+      SMTP_PORT: 1025
+      HTTP_PORT: 1080
+    networks:
+      - vigil-test-network
+
+  # Mock Router for Discovery Testing
+  mock-router:
+    image: python:3.12-alpine
+    container_name: vigil-router-mock
+    command: >
+      sh -c "
+        pip install fastapi uvicorn python-multipart pydantic aiofiles &&
+        python -c '
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+import uvicorn
+
+app = FastAPI()
+
+@app.get(\"/\")
+async def root():
+    return {\"status\": \"UPnP Router Mock\"}
+
+@app.get(\"/upnp/control/DHCPTable\")
+async def dhcp_table():
+    return JSONResponse(content={
+        \"devices\": [
+            {\"mac\": \"AA:BB:CC:DD:EE:01\", \"ip\": \"192.168.50.100\", \"hostname\": \"Test-Phone\", \"vendor\": \"Apple\"},
+            {\"mac\": \"AA:BB:CC:DD:EE:02\", \"ip\": \"192.168.50.101\", \"hostname\": \"Test-Laptop\", \"vendor\": \"Dell\"},
+            {\"mac\": \"AA:BB:CC:DD:EE:03\", \"ip\": \"192.168.50.102\", \"hostname\": \"Test-TV\", \"vendor\": \"Samsung\"}
+        ]
+    })
+
+@app.post(\"/login\")
+async def login():
+    return {\"success\": True}
+
+uvicorn.run(app, host=\"0.0.0.0\", port=8080)
+        '
+      "
+    ports:
+      - "8080:8080"
+    networks:
+      - vigil-test-network
+
+  # Test Runner
+  test-runner:
+    build:
+      context: ..
+      dockerfile: INTEGRATION_TEST_SUITE/Dockerfile.test-runner
+    container_name: vigil-test-runner
+    environment:
+      API_BASE_URL: http://backend:8000/api/v2
+      FRONTEND_URL: http://frontend:3000
+      DATABASE_URL: postgresql+asyncpg://vigil_test:test_secret_password_123@postgres:5432/vigil_test
+      REDIS_URL: redis://:redis_test_pass_123@redis:6379/0
+      SMTP_MOCK_URL: http://mock-smtp:1080
+      MOCK_ROUTER_URL: http://mock-router:8080
+    volumes:
+      - .:/tests
+      - test_results:/test-results
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+      mock-smtp:
+        condition: service_started
+      mock-router:
+        condition: service_started
+    networks:
+      - vigil-test-network
+    command: >
+      sh -c "
+        echo 'Waiting for all services to be ready...' &&
+        sleep 10 &&
+        echo 'Running integration tests...' &&
+        pytest /tests -v --tb=short --html=/test-results/report.html --self-contained-html --cov=/tests --cov-report=xml:/test-results/coverage.xml --cov-report=html:/test-results/coverage_html || true &&
+        echo 'Tests completed. Results in /test-results/'
+      "
+
+volumes:
+  postgres_test_data:
+  redis_test_data:
+  test_logs:
+  test_results:
+
+networks:
+  vigil-test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

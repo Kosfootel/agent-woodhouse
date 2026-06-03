@@ -1,0 +1,202 @@
+[
+  {
+    "file": "projects/vigil-home/poc-backend/docker-compose.yml",
+    "line": 17,
+    "severity": "critical",
+    "issue": "Exposed Gmail App Password in plain text",
+    "details": "GMAIL_APP_PASSWORD=odsq hraj soqe hyzm is hardcoded in the docker-compose.yml file. This is a live credential that must be rotated immediately.",
+    "recommendation": "1. Rotate the Gmail App Password immediately in Google Account settings. 2. Move all credentials to environment variables or Docker secrets. 3. Add this file to .gitignore and remove from git history using git-filter-branch or BFG Repo-Cleaner.",
+    "cwe": "CWE-798: Use of Hard-coded Credentials",
+    "cvss": "9.8"
+  },
+  {
+    "file": "projects/vigil-home/poc-backend/docker-compose.yml",
+    "line": 16,
+    "severity": "critical",
+    "issue": "Exposed Gmail email address in configuration",
+    "details": "GMAIL_USER=kosfootel@gmail.com is hardcoded, making it easy to target the account for phishing or brute force attacks.",
+    "recommendation": "Move to environment variables. Consider using a dedicated service account instead of personal Gmail.",
+    "cwe": "CWE-798: Use of Hard-coded Credentials",
+    "cvss": "5.3"
+  },
+  {
+    "file": "docker-compose.yml",
+    "line": 8,
+    "severity": "critical",
+    "issue": "network_mode: host removes Docker network isolation",
+    "details": "Using host network mode exposes containers directly to the host network stack, bypassing Docker's network isolation. This allows containers to access all host network interfaces and increases the attack surface significantly.",
+    "recommendation": "Remove network_mode: host and use explicit port mapping (e.g., ports: ['8000:8000']). Use Docker's internal DNS for service discovery between containers.",
+    "cwe": "CWE-284: Improper Access Control",
+    "cvss": "8.1"
+  },
+  {
+    "file": "docker-compose.cicd.yml",
+    "line": 6,
+    "severity": "critical",
+    "issue": "network_mode: host in CI/CD deployment",
+    "details": "CI/CD compose file also uses host network mode, exposing production services without network isolation.",
+    "recommendation": "Remove network_mode: host. Configure proper Docker networking with explicit port mappings for 8000 and 8085.",
+    "cwe": "CWE-284: Improper Access Control",
+    "cvss": "8.1"
+  },
+  {
+    "file": "docker-compose.yml.bak",
+    "line": 20,
+    "severity": "critical",
+    "issue": "Invalid healthcheck port (808000 instead of 8000)",
+    "details": "Health check uses 'http://localhost:808000/health' which is an invalid port number (max 65535). This will cause health checks to always fail.",
+    "recommendation": "Fix to 'http://localhost:8000/health'. Review all healthcheck configurations for typos.",
+    "cwe": "CWE-754: Improper Check for Unusual or Exceptional Conditions",
+    "cvss": "7.5"
+  },
+  {
+    "file": "docker-compose.yml.bak",
+    "line": 46,
+    "severity": "critical",
+    "issue": "Invalid healthcheck port (808080 instead of 8080)",
+    "details": "Health check uses 'http://localhost:808080/' which is an invalid port number.",
+    "recommendation": "Fix to 'http://localhost:8080/'. Review all healthcheck configurations.",
+    "cwe": "CWE-754: Improper Check for Unusual or Exceptional Conditions",
+    "cvss": "7.5"
+  },
+  {
+    "file": "backend/Dockerfile",
+    "line": 14,
+    "severity": "high",
+    "issue": "Container runs as root user",
+    "details": "No USER directive is specified, so the container runs as root. If the application is compromised, the attacker has root privileges within the container.",
+    "recommendation": "Add 'RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app' and 'USER appuser' before the CMD instruction.",
+    "cwe": "CWE-250: Execution with Unnecessary Privileges",
+    "cvss": "7.1"
+  },
+  {
+    "file": "dashboard/Dockerfile",
+    "line": 1,
+    "severity": "high",
+    "issue": "Nginx container runs as root by default",
+    "details": "The nginx:alpine base image runs as root by default. While nginx drops privileges internally, the container startup runs as root.",
+    "recommendation": "Add 'RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx' and 'USER nginx' at the end of the Dockerfile.",
+    "cwe": "CWE-250: Execution with Unnecessary Privileges",
+    "cvss": "6.5"
+  },
+  {
+    "file": ".github/workflows/dashboard-deploy.yml",
+    "line": 205,
+    "severity": "high",
+    "issue": "StrictHostKeyChecking=no disables SSH host key verification",
+    "details": "This makes the deployment vulnerable to man-in-the-middle attacks. An attacker could intercept the SSH connection to GX-10.",
+    "recommendation": "Remove StrictHostKeyChecking=no. Use ssh-keyscan to populate known_hosts, or use the webfactory/ssh-agent action which handles this properly.",
+    "cwe": "CWE-322: Key Exchange without Entity Authentication",
+    "cvss": "7.4"
+  },
+  {
+    "file": ".github/workflows/dashboard-deploy.yml",
+    "line": 207,
+    "severity": "high",
+    "issue": "UserKnownHostsFile=/dev/null prevents host key verification",
+    "details": "Combined with StrictHostKeyChecking=no, this completely disables SSH security for the deployment connection.",
+    "recommendation": "Store known hosts in a secret or use a proper SSH agent action.",
+    "cwe": "CWE-322: Key Exchange without Entity Authentication",
+    "cvss": "7.4"
+  },
+  {
+    "file": "Caddyfile.spa",
+    "line": 5,
+    "severity": "medium",
+    "issue": "Overly permissive CORS configuration",
+    "details": "Access-Control-Allow-Origin: * allows any website to make requests to the API, potentially enabling CSRF attacks from malicious sites.",
+    "recommendation": "Restrict to specific origins: 'header Access-Control-Allow-Origin \"https://yourdomain.com\"' or use environment-specific configurations.",
+    "cwe": "CWE-942: Overly Permissive Cross-domain Whitelist",
+    "cvss": "5.3"
+  },
+  {
+    "file": "Caddyfile.spa",
+    "line": 27,
+    "severity": "medium",
+    "issue": "Caddy admin API exposed without authentication",
+    "details": "The Caddy admin API on port 2019 is exposed to all interfaces (0.0.0.0) without authentication, allowing anyone to reconfigure the server.",
+    "recommendation": "Bind admin to localhost only: 'bind 127.0.0.1' or add authentication. Consider disabling admin in production.",
+    "cwe": "CWE-306: Missing Authentication for Critical Function",
+    "cvss": "6.5"
+  },
+  {
+    "file": "dashboard/Dockerfile",
+    "line": 9,
+    "severity": "medium",
+    "issue": "Hardcoded backend IP address in nginx config",
+    "details": "The nginx configuration hardcodes 192.168.50.30:8000 as the API backend. This makes the image non-portable and fails in different environments.",
+    "recommendation": "Use environment variables with envsubst or a startup script to configure the backend URL at runtime.",
+    "cwe": "CWE-15: External Control of System or Configuration Setting",
+    "cvss": "4.3"
+  },
+  {
+    "file": ".github/workflows/dashboard-deploy.yml",
+    "line": 30,
+    "severity": "medium",
+    "issue": "Unpinned GitHub Action (Trivy @master)",
+    "details": "Using @master branch means the action can change without warning, potentially introducing breaking changes or security issues.",
+    "recommendation": "Pin to a specific version or commit SHA: 'uses: aquasecurity/trivy-action@0.29.0'",
+    "cwe": "CWE-829: Inclusion of Functionality from Untrusted Control Sphere",
+    "cvss": "5.0"
+  },
+  {
+    "file": "backend/Dockerfile",
+    "line": 20,
+    "severity": "medium",
+    "issue": "CMD uses shell form instead of JSON array form",
+    "details": "Shell form doesn't handle signals properly (SIGTERM won't reach the application), potentially causing slow shutdowns or data corruption.",
+    "recommendation": "Use JSON array form: CMD [\"uvicorn\", \"app.main:app\", \"--host\", \"0.0.0.0\", \"--port\", \"8000\"]",
+    "cwe": "CWE-665: Improper Initialization",
+    "cvss": "4.0"
+  },
+  {
+    "file": "docker-compose.yml",
+    "line": 13,
+    "severity": "medium",
+    "issue": "No healthcheck defined for backend service",
+    "details": "Without healthchecks, Docker cannot determine if the container is actually healthy and ready to serve requests.",
+    "recommendation": "Add healthcheck section matching the one in docker-compose.cicd.yml.",
+    "cwe": "CWE-703: Improper Check or Handling of Exceptional Conditions",
+    "cvss": "4.0"
+  },
+  {
+    "file": "projects/vigil-home/deployment/gx10/docker-compose.gx10.yml",
+    "line": 23,
+    "severity": "medium",
+    "issue": "Hardcoded database password with weak fallback",
+    "details": "POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vigil_secure_2024} uses a predictable default password if the env var is not set.",
+    "recommendation": "Remove the default value. Fail fast if the password is not provided via environment variable or Docker secret.",
+    "cwe": "CWE-798: Use of Hard-coded Credentials",
+    "cvss": "6.5"
+  },
+  {
+    "file": "deploy.sh",
+    "line": 9,
+    "severity": "medium",
+    "issue": "SSH StrictHostKeyChecking disabled in deployment script",
+    "details": "Same issue as in GitHub Actions - vulnerable to MITM attacks when deploying.",
+    "recommendation": "Remove StrictHostKeyChecking=no and properly manage known_hosts.",
+    "cwe": "CWE-322: Key Exchange without Entity Authentication",
+    "cvss": "6.0"
+  },
+  {
+    "file": "backend/Dockerfile",
+    "line": 1,
+    "severity": "medium",
+    "issue": "Base image not pinned to digest",
+    "details": "Using 'python:3.11-slim' without digest means the image can change between builds, potentially introducing breaking changes or vulnerabilities.",
+    "recommendation": "Pin to specific digest: 'FROM python:3.11-slim@sha256:...'",
+    "cwe": "CWE-1104: Use of Unmaintained Third Party Components",
+    "cvss": "4.0"
+  },
+  {
+    "file": "dashboard/Dockerfile",
+    "line": 1,
+    "severity": "medium",
+    "issue": "Base image not pinned to digest",
+    "details": "Using 'nginx:alpine' without digest leads to non-reproducible builds.",
+    "recommendation": "Pin to specific digest: 'FROM nginx:alpine@sha256:...'",
+    "cwe": "CWE-1104: Use of Unmaintained Third Party Components",
+    "cvss": "4.0"
+  }
+]
