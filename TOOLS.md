@@ -37,6 +37,29 @@ Skills are shared. Your setup is yours. Keeping them apart means you can update 
 
 ---
 
+## Report Storage Conventions
+
+| Report Type | Repository | Path Pattern |
+|-------------|------------|--------------|
+| General research/analysis | `agent-woodhouse` | `/research/YYYY-MM-DD-topic.md` |
+| Development/project-specific | `gx-10-dev-pod` | `/plans/`, `/reviews/`, `/specs/` |
+| Lossless-claw diagnostics | `agent-woodhouse` | `/docs/diagnostics/` |
+| Daily briefs | `agent-woodhouse` | `/briefs/YYYY-MM-DD-{time}.md` |
+
+### Quick Reference
+
+- **agent-woodhouse** → `https://github.com/Kosfootel/agent-woodhouse.git`
+  - AI trends, research, analysis, general reporting
+  - Lossless-claw diagnostics and health reports
+  - Daily news briefs
+
+- **gx-10-dev-pod** → `https://github.com/Better-Machine/gx-10-dev-pod.git`
+  - Code Review & Architecture Agent plans
+  - Development project specifications
+  - Technical reviews and architecture decisions
+
+---
+
 Add whatever helps you do your job. This is your cheat sheet.
 
 ## Related

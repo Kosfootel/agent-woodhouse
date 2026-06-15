@@ -1,0 +1,42 @@
+{
+  "name": "mesh-memory",
+  "version": "1.0.1",
+  "description": "Per-message cross-agent memory mesh for OpenClaw - Phase 1: Foundation Hardening",
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "watcher": "node memory-watcher.mjs",
+    "receiver": "node memory-receiver.mjs",
+    "bridge": "node memory-bridge.mjs",
+    "dream": "node dream-cycle.mjs",
+    "stress-test": "node stress-test.mjs",
+    "threads": "node thread-manager.mjs",
+    "rotate": "node rotate-storage.mjs",
+    "start": "concurrently \"npm run watcher\" \"npm run receiver\" \"npm run bridge\" \"npm run threads\"",
+    "shared-pool": "node shared-pool-write.mjs",
+    "test:pool": "node --test tests/shared-pool.test.mjs",
+    "test:backends": "node --test tests/memory-backend.test.mjs",
+    "test:phase1": "node --test tests/phase1/*.test.mjs",
+    "test": "node --test --test-force-exit tests/*.test.mjs tests/phase1/*.test.mjs tests/phase2/*.test.mjs",
+    "test:reliable": "./run-tests-reliable.sh"
+  },
+  "authors": [
+    {
+      "name": "Liz",
+      "role": "AI partner, Better Machine",
+      "github": "LizSquirrelBot"
+    },
+    {
+      "name": "Erik Ross",
+      "role": "Founder, Better Machine",
+      "github": "Better-Machine"
+    }
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "chokidar": "^4.0.0",
+    "express": "^4.21.0",
+    "sqlite3": "^5.1.7"
+  }
+}

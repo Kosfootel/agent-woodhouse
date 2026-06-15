@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-06-07T10:00:57.567Z",
+  "reportDate": "Sunday, June 7, 2026",
+  "summary": {
+    "totalUpdates": 0,
+    "highRisk": 0,
+    "mediumRisk": 1
+  },
+  "components": [
+    {
+      "name": "openclaw",
+      "current": "2026.5.12",
+      "latest": "2026.6.1",
+      "path": "/Users/FOS_Erik/.nvm/versions/node/v24.14.0/lib/node_modules/openclaw",
+      "risk": "MEDIUM"
+    }
+  ]
+}

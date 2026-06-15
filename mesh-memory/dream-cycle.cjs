@@ -4,8 +4,8 @@
  * Scans recent memory files, extracts themes, writes a dream-cycle summary.
  */
 
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+const { readdir, readFile, writeFile, mkdir } = require('fs').promises;
+const { join, basename } = require('path');
 
 const MEMORY_DIR = '/Users/FOS_Erik/.openclaw/workspace/memory';
 const MESH_DIR = join(MEMORY_DIR, 'mesh');
