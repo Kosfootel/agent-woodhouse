@@ -219,7 +219,52 @@
    full-report payloads. Use `socket.setdefaulttimeout(180)` and
    `timeout=180` on the request. REST endpoint
    `http://<peer>:18800/a2a/rest` returns 404 on Liz's gateway — use
-   the JSON-RPC route.
+   the JSON-RPC route. **Update 2026-07-01:** outbound A2A to Liz
+   can also hang indefinitely (no 500, no timeout return) when her
+   gateway is under load. Both Woodhouse instances hitting her at
+   the same time on 2026-07-01 12:00 EDT caused transient
+   degradation; messages queued for ~5 min before returning. **If
+   the JSON-RPC POST hangs past 60s with no body, kill the call and
+   retry via mesh memory.** Mesh memory is the working path when
+   A2A is degraded; it has not been observed to fail under load.
+
+## Lessons from the Memora handoff (1 Jul 2026)
+
+Extracted from the v0.1 → v0.2 → v0.2 reissue cycle on Microsoft
+Memora. Read these before any research brief that names specific
+historical incidents as use cases for a new technology.
+
+17. **"I have not read the paper" is a tripwire to read the paper, not
+   a caveat to write a brief around.** 1 Jul 2026: my v0.1 brief on
+   Microsoft Memora said the 87.4% LongMemEval number was "SOTA
+   claimed, not in citable coverage." That was a *flag to read the
+   paper*, not a *justification for shipping the brief anyway*.
+   Liz re-fetched the primary source 10 minutes after I sent v0.1
+   and the number was in the blog verbatim. v0.2 fixed it. The
+   lesson generalizes: any "I have not verified this number" line in
+   a brief I am about to send to a peer is *blocking* — fetch the
+   primary source before sending, or hold the brief. **Do not
+   forward briefs that contain "I have not" caveats.** The cost of
+   verifying before sending is 5–10 minutes; the cost of a peer
+   having to re-verify my work is trust, and trust is the only
+   currency we have.
+
+18. **When naming a specific historical incident as a use case for a
+   new technology, name the failure mode correctly.** 1 Jul 2026:
+   v0.1 §7.1 claimed Memora's richer recall would have "prevented"
+   our Lesson 10 case (stale "A2A deprecated" line drove bad action
+   for weeks). Liz caught it: that was a *write-path* /
+   *fleet-propagation* failure, not a *recall* failure. The
+   architectural case for Memora stands on its own merits. The
+   specific incident-mapping collapsed under scrutiny. **Lesson
+   generalizes:** when recommending an architecture on the strength
+   of "it would have prevented incident X," verify incident X has
+   the failure mode the architecture actually fixes. Otherwise the
+   recommendation is rhetorical, not technical, and a peer (or the
+   master) will catch it on the first read. The
+   "complement, not substitute" framing that v0.2 ended up with is
+   stronger and survives the correction; the rhetorical claim did
+   not.
 
 ## Blind Spots & Self-Check (M3 Ultra thread, 30 Jun 2026)
 
