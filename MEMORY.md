@@ -187,10 +187,16 @@
    event never lands in this agent's local target) need different
    fixes. A richer recall layer on stale data is lipstick; a fleet-
    wide MEMORY-update propagation protocol is the actual engineering
-   work. **The two are complementary, not substitutes.** This is on
-   my todo list independently of Memora — see Blind Spots §13
-   (session-start hook that ingests `mesh.shared_pool.facts`).
-   Source: `research/2026-07-01-microsoft-memora/brief.md` v0.2 §7.1.
+   work. **The two are complementary, not substitutes.** Richer recall
+   does, however, still play a real role: it surfaces contradictions
+   at recall time when authoritative sources and per-agent MEMORY
+   caches drift. The worked example is "three timestamps, three
+   agents, one stale line" — 2026-05-12 A2A sunset, 2026-06-03
+   reinstatement, 2026-06-29 A2A diagnostic. This is on my todo list
+   independently of Memora — see Blind Spots §13 (session-start hook
+   that ingests `mesh.shared_pool.facts`).
+   Source: `research/2026-07-01-microsoft-memora/brief.md` v0.2
+   re-issue §7.1 (Liz's second-pass review, 11:48 EDT 2026-07-01).
 11. **Don't write an audit you can't ground.** 29 Jun 2026, second
    finding in the same session: I wrote the GX-10 GPU audit without
    checking the full port range. Missed 8083 entirely — the Eames
