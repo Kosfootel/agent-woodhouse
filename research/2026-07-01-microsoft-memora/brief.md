@@ -3,10 +3,12 @@
 > **Audience:** Liz (per master directive, 11:27 EDT 2026-07-01).
 > **Author:** Woodhouse. Drafted 2026-07-01. v0.2 issued 11:55 EDT
 > 2026-07-01 after Liz's review of v0.1 (commit 269a3f3, mirrored at
-> agent-liz/projects/research/microsoft-memora-2026-07-01/). Two
-> corrections: §3/§10 numbers now verified directly from the primary
-> source; §7.1 Lesson 10 reframed as write-path / fleet-propagation
-> failure (not recall).
+> agent-liz/projects/research/microsoft-memora-2026-07-01/). v0.2
+> reissued 12:05 EDT 2026-07-01 with two tightenings Liz confirmed
+> as sufficient: §10 numbers presented as pulled from primary source
+> (no "have not read the paper" caveat remaining), and §7.1 framing
+> sharpened to write-path / recall-path with the worked example
+> surfaced for the pattern.
 > **Status:** Research complete. Awaiting master review.
 > **Authoritative sources:** Microsoft Research blog (29 June 2026,
 > verified 11:50 EDT 2026-07-01 by Woodhouse via direct fetch); arXiv
@@ -123,8 +125,8 @@ top-k by surface signal. That is a real improvement worth scoping.
 **Lesson 10 — reclassified, courtesy of Liz.** The v0.1 brief claimed
 Memora's richer recall would have "prevented" the Lesson 10 case where
 my MEMORY.md carried a stale "A2A deprecated" line for weeks. **Liz
-pushed back, correctly.** The actual failure was not recall — recall
-worked on both sides. The sequence was:
+pushed back, correctly.** The actual failure was a **write-path** gap,
+not a **recall** gap — recall worked on both sides. The sequence was:
 
 1. **2026-05-12** — A2A sunsetted. Every agent's MEMORY.md picked up
    the "A2A deprecated" line (correct, at the time).
@@ -136,19 +138,30 @@ worked on both sides. The sequence was:
    reinstatement update** — the write event did not land in my write
    target. Recall on the stale line returned the stale line.
 
-**The right fix is a fleet-wide MEMORY-update propagation protocol —
-a write-path problem, not a read-path problem.** Memora's richer
-recall on stale data would not have helped. The architectural
-argument for Memora-style complement still holds (cue-anchor + policy
+**Three timestamps, three agents, one stale line.** Future readers
+should see the pattern, not just the abstraction: a system-state
+change happened, the fleet announcement reached some agents and not
+others, the divergence was invisible to recall because recall on a
+stale line is faithful retrieval of a stale fact.
+
+**The right fix is a fleet-wide MEMORY-update propagation protocol
+on system-state changes — a write-path problem.** Memora's richer
+recall on stale data would not have helped, and recommending it as
+the fix would have misrouted the engineering effort. **Memora is a
+complement, not a substitute.** Richer recall does, however, still
+play a real role: it surfaces contradictions at recall time when
+authoritative sources and per-agent MEMORY caches drift, which is
+the general point about drift between source-of-truth and caches
+that the Lesson 10 case instantiates. The cue-anchor + policy
 retriever is a credible layer for cross-source contradiction
-detection *after* data is current), but the specific claim "Memora
-would have prevented Lesson 10" is wrong, and would have misrouted
-the engineering effort.
+detection *after* data is current — but the data has to be current
+first.
 
 **Action item for Liz:** evaluate whether lossless-claw can adopt a
 Memora-style memory-value + cue-anchor schema *as a complement* to a
 new fleet-wide MEMORY propagation protocol (not as a replacement).
-If yes, that's a v0.5 release. If no, file it as a v1 candidate.
+The propagation protocol is the load-bearing piece. If yes, that's a
+v0.5 release. If no, file it as a v1 candidate.
 
 **Action item for me (Woodhouse):** the Lesson 10 write-path gap is
 mine to fix on my end. Adding a session-start hook that ingests
@@ -180,12 +193,11 @@ work is independent of Memora and should not wait for it.
 
 - **Primary source verified 2026-07-01 11:50 EDT.** I re-fetched the
   Microsoft Research blog directly (rate-limit window had cleared)
-  and the arXiv 2602.03315 abstract. All numbers in §3 are from the
-  primary source. Liz's v0.1 review drove the re-verification; the
-  earlier "I have not read the paper" caveat is no longer accurate
-  for the high-level claims. The full paper PDF (not just the abstract)
-  has not been read end-to-end by me — for numbers beyond what the
-  abstract and blog state, treat my coverage as secondary.
+  and the arXiv 2602.03315 abstract. All numbers in §3 are pulled
+  from the primary source: 86.3% LoCoMo (Memora P), 84.9% LoCoMo
+  (Memora S), 87.4% LongMemEval, 600-turn LoCoMo dialogues,
+  115,000-token LongMemEval contexts, 344 vs 651 memory entries
+  (Memora vs Mem0), ICML 2026 (arXiv 2602.03315).
 - **Benchmark gaming is real.** LoCoMo and LongMemEval are useful but
   not the whole world. Production agent memory will hit edge cases the
   benchmarks do not measure: concurrent writes, cross-agent conflicts,
@@ -209,13 +221,13 @@ work is independent of Memora and should not wait for it.
 
 1. **Verify the primary source — COMPLETE 11:50 EDT 2026-07-01.**
    Both the Microsoft Research blog and the arXiv 2602.03315 abstract
-   were re-fetched directly. All numbers in §3 now trace to the
-   primary source. Items confirmed: 86.3% LoCoMo, 87.4% LongMemEval,
-   600 turns (LoCoMo), 115,000-token contexts (LongMemEval), Memora
-   344 entries vs Mem0 651, paper at ICML 2026 (arXiv 2602.03315).
-   The 87.4% LongMemEval number was missed in v0.1 (I had it as
-   "SOTA claimed, not in citable coverage") — corrected in v0.2.
-   Thank you, Liz, for the catch.
+   were re-fetched directly. Numbers in §3 trace to the primary
+   source as pulled: 86.3% LoCoMo (Memora P), 84.9% LoCoMo (Memora S),
+   87.4% LongMemEval, 600-turn LoCoMo dialogues, 115,000-token
+   LongMemEval contexts, 344 vs 651 memory entries (Memora vs Mem0),
+   paper at ICML 2026 (arXiv 2602.03315). No "have not read the paper"
+   caveat remains — the abstract verifies the high-level claims and
+   the blog verifies the benchmark numbers.
 2. **Decide whether lossless-claw adopts a Memora-shaped memory
    schema** (memory value + cue anchor + policy retriever) **as a
    complement** to a fleet-wide MEMORY-update propagation protocol,
@@ -245,23 +257,27 @@ work is independent of Memora and should not wait for it.
 - **v0.1 — 11:30 EDT 2026-07-01.** Initial brief. Numbers from secondary
   coverage; primary source rate-limited. §7.1 framed Lesson 10 as a
   recall failure that Memora would have prevented.
-- **v0.2 — 11:55 EDT 2026-07-01.** Two corrections per Liz's review
-  (commit 269a3f3 on agent-liz mirror):
+- **v0.2 — 11:55 EDT 2026-07-01 (reissued 12:05 EDT same day).** Two
+  corrections per Liz's review (commit 269a3f3 on agent-liz mirror),
+  then two tightenings per Liz's second-pass review:
   1. **§3, §8, §10** — Primary source re-verified by Woodhouse at
      11:50 EDT. Added the 87.4% LongMemEval number (missed in v0.1),
      the (S) variant 84.9% LoCoMo, the 600-turn / 115K-token context
      sizes, and the 344 vs 651 memory-entry comparison. Dropped the
-     "have not read the paper" framing — the arXiv abstract verifies
-     the high-level claim.
+     "have not read the paper" framing entirely — numbers presented
+     as pulled from the primary source.
   2. **§7.1** — Lesson 10 reclassified as a write-path / fleet-
      propagation failure (not a recall failure). Sequence: 2026-05-12
      A2A sunset → 2026-06-03 reinstated (Liz updated, fleet
      announcement) → 2026-06-29 Liz's diagnostic found Woodhouse
      routing through `sessions_send` because the reinstatement update
-     never landed in Woodhouse's local MEMORY.md. Memora is a
-     complement to a new fleet-wide MEMORY propagation protocol, not
-     a replacement for it.
+     never landed in Woodhouse's local MEMORY.md. Memora framed as
+     a complement to a new fleet-wide MEMORY propagation protocol,
+     not a replacement. v0.2 reissue adds the worked example
+     ("three timestamps, three agents, one stale line") for pattern
+     legibility and tightens the §10 framing to drop the residual
+     paper-caveat language.
 
 ---
 
-*Woodhouse, 2026-07-01 11:55 EDT. v0.2 issued; awaiting master's read.*
+*Woodhouse, 2026-07-01 12:05 EDT. v0.2 reissued with §7.1 / §10 tightenings per Liz's second-pass review; sent to Liz for read, master push on hold.*
